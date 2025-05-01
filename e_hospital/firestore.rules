@@ -1,22 +1,66 @@
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{db}/documents {
-
-    // users collection – owner can read/write their own doc
-    match /users/{userId} {
-      allow create: if request.auth != null;
-      allow read, update, delete: if request.auth.uid == userId;
+  match /databases/{database}/documents {
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
     }
-
-    // simple role-based gate
-    match /patients/{patientId} {
-      function role() {
-        return get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role;
-      }
-      allow read, write: if role() == 'hospitalAdmin';
-      allow read, write: if role() == 'medicalPersonnel'
-                         && patientId in get(/databases/$(db)/documents/users/$(request.auth.uid)).data.assignedPatients;
-      allow read: if role() == 'patient' && request.auth.uid == patientId;
+    
+    // Check if user owns the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Check if user has admin role
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hospitalAdmin';
+    }
+    
+    // Check if user is medical personnel
+    function isMedicalPersonnel() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'medicalPersonnel';
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      // Anyone can create their account
+      allow create: if isAuthenticated() && isOwner(userId);
+      
+      // Admins can read all user profiles
+      // Medical personnel can read their own and assigned patients' profiles
+      // Patients can only read their own profile
+      allow read: if isAdmin() || 
+                   isOwner(userId) ||
+                   (isMedicalPersonnel() && (
+                     isOwner(userId) || 
+                     userId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedPatientIds
+                   ));
+      
+      // Admins can update any user
+      // Medical personnel can update their assigned patients
+      // Users can update their own data (except role field)
+      allow update: if isAdmin() ||
+                     (isMedicalPersonnel() && userId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedPatientIds) ||
+                     (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])));
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+    
+    // Allow read/write access to the _config collection for testing
+    match /_config/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Add rules for any other collections as needed
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
-}
+} 

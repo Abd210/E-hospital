@@ -1,1 +1,29 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"e-hospital-46b0d","appId":"1:89162094153:android:82cb57747eb7ae1bbbd198","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"e-hospital-46b0d","configurations":{"android":"1:89162094153:android:82cb57747eb7ae1bbbd198","ios":"1:89162094153:ios:5b08db26bbd61993bbd198","macos":"1:89162094153:ios:5b08db26bbd61993bbd198","web":"1:89162094153:web:c3572f141629eba8bbd198","windows":"1:89162094153:web:6379200a84b327b5bbd198"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "e-hospital-46b0d",
+          "appId": "1:89162094153:android:82cb57747eb7ae1bbbd198",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "e-hospital-46b0d",
+          "configurations": {
+            "android": "1:89162094153:android:82cb57747eb7ae1bbbd198",
+            "ios": "1:89162094153:ios:5b08db26bbd61993bbd198",
+            "macos": "1:89162094153:ios:5b08db26bbd61993bbd198",
+            "web": "1:89162094153:web:c3572f141629eba8bbd198",
+            "windows": "1:89162094153:web:6379200a84b327b5bbd198"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

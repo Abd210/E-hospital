@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import '../services/firestore_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +20,14 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isCreatingAccount = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Set default values for easier login during development
+    _emailController.text = 'admin@hospital.com';
+    _passwordController.text = 'admin123';
+  }
 
   @override
   void dispose() {
@@ -82,7 +91,18 @@ class _LoginScreenState extends State<LoginScreen> {
       // Set default role to patient
       await _db.collection('users').doc(userCredential.user!.uid).set({
         'email': email,
+        'name': email.split('@').first,
         'role': 'patient',
+        'medicalCondition': 'Healthy',
+        'bloodType': 'Unknown',
+        'vitals': {
+          'heartRate': '72 bpm',
+          'bloodPressure': '120/80 mmHg',
+          'temperature': '36.6 °C',
+          'oxygenSaturation': '98%',
+        },
+        'treatments': [],
+        'diagnostics': [],
         'createdAt': FieldValue.serverTimestamp(),
       });
       
@@ -102,45 +122,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Sample users data
-      final sampleUsers = [
-        {'email': 'admin@hospital.com', 'password': 'admin123', 'role': 'hospitalAdmin'},
-        {'email': 'doctor1@hospital.com', 'password': 'doctor123', 'role': 'medicalPersonnel'},
-        {'email': 'doctor2@hospital.com', 'password': 'doctor123', 'role': 'medicalPersonnel'},
-        {'email': 'patient1@example.com', 'password': 'patient123', 'role': 'patient'},
-        {'email': 'patient2@example.com', 'password': 'patient123', 'role': 'patient'},
-      ];
-
-      for (final userData in sampleUsers) {
-        try {
-          // Check if user already exists
-          final email = userData['email'] as String;
-          final existingUsers = await _auth.fetchSignInMethodsForEmail(email);
-          
-          if (existingUsers.isNotEmpty) {
-            debugPrint('User $email already exists, skipping creation');
-            continue;
-          }
-          
-          // Create user
-          final userCredential = await _auth.createUserWithEmailAndPassword(
-            email: email,
-            password: userData['password'] as String,
-          );
-          
-          // Set user data
-          await _db.collection('users').doc(userCredential.user!.uid).set({
-            'email': email,
-            'role': userData['role'],
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          
-          debugPrint('Created user: $email with role: ${userData['role']}');
-        } catch (e) {
-          debugPrint('Error creating user: $e');
-        }
-      }
-
+      await populateSampleData();
+      
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -228,61 +211,83 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
+                            textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 24),
+                          
+                          // Error message
+                          if (_errorMessage != null) ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.red.shade200),
+                              ),
+                              child: Text(
+                                _errorMessage!,
+                                style: TextStyle(color: Colors.red.shade800),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          
+                          // Email field
                           TextField(
                             controller: _emailController,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'Email',
-                              prefixIcon: const Icon(Icons.email),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              prefixIcon: Icon(Icons.email_outlined),
+                              border: OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autocorrect: false,
                           ),
                           const SizedBox(height: 16),
+                          
+                          // Password field
                           TextField(
                             controller: _passwordController,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'Password',
-                              prefixIcon: const Icon(Icons.lock),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              prefixIcon: Icon(Icons.lock_outline),
+                              border: OutlineInputBorder(),
                             ),
                             obscureText: true,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _isCreatingAccount ? _createAccount() : _signIn(),
                           ),
-                          if (_errorMessage != null) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              _errorMessage!,
-                              style: const TextStyle(
-                                color: Colors.red,
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 24),
+                          
+                          // Login/Create button
                           ElevatedButton(
-                            onPressed: _isLoading ? null : (_isCreatingAccount ? _createAccount : _signIn),
+                            onPressed: _isLoading 
+                                ? null 
+                                : (_isCreatingAccount ? _createAccount : _signIn),
                             style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Colors.blue.shade700,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: Colors.blue.shade200,
                             ),
                             child: _isLoading
                                 ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(),
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : Text(_isCreatingAccount ? 'Create Account' : 'Login'),
                           ),
                           const SizedBox(height: 16),
+                          
+                          // Toggle between login and create account
                           TextButton(
-                            onPressed: _isLoading
-                                ? null
+                            onPressed: _isLoading 
+                                ? null 
                                 : () {
                                     setState(() {
                                       _isCreatingAccount = !_isCreatingAccount;
@@ -290,9 +295,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     });
                                   },
                             child: Text(
-                              _isCreatingAccount
-                                  ? 'Already have an account? Login'
-                                  : 'Don\'t have an account? Sign up',
+                              _isCreatingAccount 
+                                  ? 'Already have an account? Login' 
+                                  : 'Create a new account',
                             ),
                           ),
                         ],
@@ -300,47 +305,80 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
                   
-                  // Sample users creation
-                  OutlinedButton.icon(
+                  // Sample data button
+                  TextButton.icon(
                     onPressed: _isLoading ? null : _createSampleUsers,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Colors.white),
-                      foregroundColor: Colors.white,
+                    icon: const Icon(Icons.people, color: Colors.white),
+                    label: const Text(
+                      'Create Sample Users',
+                      style: TextStyle(color: Colors.white),
                     ),
-                    icon: const Icon(Icons.people),
-                    label: const Text('Create Sample Users'),
                   ),
                   
                   const SizedBox(height: 16),
                   
-                  // Sample user credentials
-                  const Card(
-                    elevation: 4,
+                  // User credentials info
+                  Card(
+                    color: Colors.white.withOpacity(0.2),
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
                     child: Padding(
-                      padding: EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.all(12.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'Sample Users:',
                             style: TextStyle(
+                              color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              fontSize: 16,
                             ),
                           ),
-                          SizedBox(height: 8),
-                          Text('Admin: admin@hospital.com / admin123'),
-                          Text('Doctor: doctor1@hospital.com / doctor123'),
-                          Text('Patient: patient1@example.com / patient123'),
+                          const SizedBox(height: 8),
+                          _buildCredentialRow('Admin', 'admin@hospital.com', 'admin123'),
+                          _buildCredentialRow('Doctor', 'doctor1@hospital.com', 'doctor123'),
+                          _buildCredentialRow('Patient', 'patient1@example.com', 'patient123'),
                         ],
                       ),
                     ),
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCredentialRow(String role, String email, String password) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              role,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Text(
+              email,
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              password,
+              style: const TextStyle(color: Colors.white),
             ),
           ),
         ],
