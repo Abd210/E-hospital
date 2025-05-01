@@ -1,784 +1,589 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
+import 'package:e_hospital/core/widgets/app_sidebar.dart';
+import 'package:e_hospital/core/widgets/responsive_layout.dart';
+import 'package:e_hospital/core/widgets/dashboard_card.dart';
+import 'package:e_hospital/core/widgets/data_table_widget.dart';
+import 'package:e_hospital/theme/app_theme.dart';
+import 'package:e_hospital/services/firestore_service.dart';
 
 class AdminDashboard extends StatefulWidget {
-  const AdminDashboard({super.key});
+  final String? initialTab;
+  
+  const AdminDashboard({Key? key, this.initialTab}) : super(key: key);
 
   @override
   State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {
-  final _db = FirebaseFirestore.instance;
-  List<Map<String, dynamic>> _users = [];
-  List<Map<String, dynamic>> _doctors = [];
-  List<Map<String, dynamic>> _patients = [];
+class _AdminDashboardState extends State<AdminDashboard> {
   bool _isLoading = true;
-  late TabController _tabController;
-  
-  final _newDoctorEmailController = TextEditingController();
-  final _newDoctorPasswordController = TextEditingController();
-  final _newDoctorNameController = TextEditingController();
-  
+  Map<String, dynamic> _dashboardData = {};
+  List<Map<String, dynamic>> _recentAppointments = [];
+  List<Map<String, dynamic>> _doctorsList = [];
+  List<Map<String, dynamic>> _patientsList = [];
+  late String _currentTab;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadUsers();
-  }
-  
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _newDoctorEmailController.dispose();
-    _newDoctorPasswordController.dispose();
-    _newDoctorNameController.dispose();
-    super.dispose();
+    _currentTab = widget.initialTab ?? '';
+    _loadDashboardData();
   }
 
-  Future<void> _loadUsers() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadDashboardData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
-      final snapshot = await _db.collection('users').get();
-      final users = snapshot.docs.map((doc) {
-        final data = doc.data();
+      // Get dashboard data
+      _dashboardData = await FirestoreService.getAdminDashboardData();
+
+      // Get recent appointments
+      final appointments = await FirestoreService.getAllAppointments();
+      _recentAppointments = appointments
+          .take(5)
+          .map((appointment) => {
+                'id': appointment.id,
+                'Patient': appointment.patientName,
+                'Doctor': appointment.doctorName,
+                'Date': appointment.appointmentDate,
+                'Time': appointment.time,
+                'Status': appointment.status.toString().split('.').last,
+                'Type': appointment.type.toString().split('.').last,
+              })
+          .toList();
+
+      // Get doctors
+      final doctors = await FirestoreService.getAllDoctors();
+      _doctorsList = doctors.map((doctor) {
+        final profile = doctor.profile as Map<String, dynamic>?;
         return {
-          'id': doc.id,
-          'email': data['email'] ?? 'No email',
-          'role': data['role'] ?? 'patient',
-          'name': data['name'] ?? data['email']?.split('@').first ?? 'Unknown',
-          'assignedPatientIds': data['assignedPatientIds'] ?? [],
-          'medicalCondition': data['medicalCondition'] ?? 'Unknown',
-          'bloodType': data['bloodType'] ?? 'Unknown',
-          'vitals': data['vitals'] ?? {},
-          'diagnostics': data['diagnostics'] ?? [],
-          'treatments': data['treatments'] ?? [],
-          'lastUpdated': data['lastUpdated'] ?? DateTime.now().toString(),
+          'id': doctor.id,
+          'Name': doctor.name,
+          'Email': doctor.email,
+          'Specialization': profile?['specialization'] ?? 'General',
+          'Patients': profile?['patientCount'] ?? 0,
         };
       }).toList();
-      
-      final doctors = users.where((user) => user['role'] == 'medicalPersonnel').toList();
-      final patients = users.where((user) => user['role'] == 'patient').toList();
-      
-      setState(() {
-        _users = users;
-        _doctors = doctors;
-        _patients = patients;
-        _isLoading = false;
-      });
-    } catch (e) {
-      debugPrint('Error loading users: $e');
-      setState(() {
-        _users = [];
-        _doctors = [];
-        _patients = [];
-        _isLoading = false;
-      });
-    }
-  }
 
-  void _signOut() async {
-    await FirebaseAuth.instance.signOut();
-    if (mounted) {
-      context.go('/login');
-    }
-  }
-  
-  Future<void> _addNewDoctor() async {
-    final email = _newDoctorEmailController.text.trim();
-    final password = _newDoctorPasswordController.text.trim();
-    final name = _newDoctorNameController.text.trim();
-    
-    if (email.isEmpty || password.isEmpty || name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All fields are required')),
-      );
-      return;
-    }
-    
-    setState(() => _isLoading = true);
-    
-    try {
-      // Create user with email and password
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      
-      // Add user data to Firestore
-      await _db.collection('users').doc(userCredential.user!.uid).set({
-        'email': email,
-        'name': name,
-        'role': 'medicalPersonnel',
-        'assignedPatientIds': [],
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Medical personnel added successfully')),
-      );
-      
-      // Clear form fields
-      _newDoctorEmailController.clear();
-      _newDoctorPasswordController.clear();
-      _newDoctorNameController.clear();
-      
-      // Reload user list
-      _loadUsers();
-      
+      // Get patients
+      final patients = await FirestoreService.getAllPatients();
+      _patientsList = patients
+          .take(5)
+          .map((patient) => {
+                'id': patient.id,
+                'Name': patient.name,
+                'Email': patient.email,
+                'Phone': patient.phone ?? 'N/A',
+                'Condition': (patient.profile as Map<String, dynamic>?)?['medicalCondition'] ?? 'Healthy',
+              })
+          .toList();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error creating medical personnel: $e')),
-      );
-      setState(() => _isLoading = false);
-    }
-  }
-  
-  Future<void> _assignPatientToDoctor(String doctorId, String patientId) async {
-    try {
-      // Get current assigned patients
-      final doctorDoc = await _db.collection('users').doc(doctorId).get();
-      final List<dynamic> currentPatients = doctorDoc.data()?['assignedPatientIds'] ?? [];
-      
-      // Add patient if not already assigned
-      if (!currentPatients.contains(patientId)) {
-        await _db.collection('users').doc(doctorId).update({
-          'assignedPatientIds': [...currentPatients, patientId],
-          'lastUpdated': DateTime.now().toString(),
+      debugPrint('Error loading dashboard data: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
         });
       }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Patient assigned successfully')),
-      );
-      
-      _loadUsers();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error assigning patient: $e')),
-      );
     }
-  }
-  
-  Future<void> _updatePatientRecord(String patientId) async {
-    final patient = _patients.firstWhere((p) => p['id'] == patientId);
-    
-    TextEditingController medicalConditionController = TextEditingController(text: patient['medicalCondition']);
-    TextEditingController bloodTypeController = TextEditingController(text: patient['bloodType']);
-    
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Update ${patient['name']}\'s Record'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: medicalConditionController,
-                decoration: const InputDecoration(labelText: 'Medical Condition'),
-              ),
-              TextField(
-                controller: bloodTypeController,
-                decoration: const InputDecoration(labelText: 'Blood Type'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await _db.collection('users').doc(patientId).update({
-                  'medicalCondition': medicalConditionController.text,
-                  'bloodType': bloodTypeController.text,
-                  'lastUpdated': DateTime.now().toString(),
-                });
-                _loadUsers();
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Patient record updated')),
-                  );
-                }
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error updating patient record: $e')),
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Map<String, dynamic>? _getPatientById(String patientId) {
-    try {
-      return _patients.firstWhere((p) => p['id'] == patientId);
-    } catch (e) {
-      return null;
-    }
-  }
-  
-  Future<void> _viewPatientRecords(String patientId) async {
-    final patient = _patients.firstWhere((p) => p['id'] == patientId);
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${patient['name']}\'s Clinical File'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 500,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              _infoTile('Email', patient['email']),
-              _infoTile('Medical Condition', patient['medicalCondition']),
-              _infoTile('Blood Type', patient['bloodType']),
-              _infoTile('Last Updated', patient['lastUpdated']),
-              
-              const Divider(),
-              const Text('Vitals', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              
-              if (patient['vitals'] != null && patient['vitals'] is Map && (patient['vitals'] as Map).isNotEmpty) ...[
-                _infoTile('Heart Rate', patient['vitals']['heartRate'] ?? 'N/A'),
-                _infoTile('Blood Pressure', patient['vitals']['bloodPressure'] ?? 'N/A'),
-                _infoTile('Temperature', patient['vitals']['temperature'] ?? 'N/A'),
-                _infoTile('Oxygen Saturation', patient['vitals']['oxygenSaturation'] ?? 'N/A'),
-              ] else
-                const Text('No vitals information available'),
-              
-              const Divider(),
-              const Text('Diagnostics', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              
-              if (patient['diagnostics'] != null && patient['diagnostics'] is List && (patient['diagnostics'] as List).isNotEmpty)
-                ...List.generate((patient['diagnostics'] as List).length, (index) {
-                  final diagnostic = (patient['diagnostics'] as List)[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Description: ${diagnostic['description']}'),
-                          Text('Date: ${diagnostic['date']}'),
-                          Text('Doctor: ${diagnostic['doctorName']}'),
-                        ],
-                      ),
-                    ),
-                  );
-                })
-              else
-                const Text('No diagnostic information available'),
-                
-              const Divider(),
-              const Text('Treatments', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              
-              if (patient['treatments'] != null && patient['treatments'] is List && (patient['treatments'] as List).isNotEmpty)
-                ...List.generate((patient['treatments'] as List).length, (index) {
-                  final treatment = (patient['treatments'] as List)[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Medication: ${treatment['medication']}'),
-                          Text('Dosage: ${treatment['dosage']}'),
-                          Text('Description: ${treatment['description']}'),
-                          Text('Date: ${treatment['date']}'),
-                          Text('Doctor: ${treatment['doctorName']}'),
-                        ],
-                      ),
-                    ),
-                  );
-                })
-              else
-                const Text('No treatment information available'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Future<void> _viewDoctorPatients(String doctorId) async {
-    final doctor = _doctors.firstWhere((d) => d['id'] == doctorId);
-    final assignedPatientIds = doctor['assignedPatientIds'] as List;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${doctor['name']}\'s Patients'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 400,
-          child: assignedPatientIds.isEmpty
-              ? const Center(child: Text('No patients assigned'))
-              : ListView.builder(
-                  itemCount: assignedPatientIds.length,
-                  itemBuilder: (context, index) {
-                    final patientId = assignedPatientIds[index];
-                    final patient = _getPatientById(patientId);
-                    
-                    if (patient == null) {
-                      return ListTile(
-                        title: Text('Unknown Patient (ID: $patientId)'),
-                        subtitle: const Text('Patient not found'),
-                      );
-                    }
-                    
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(patient['name']),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Condition: ${patient['medicalCondition']}'),
-                            Text('Blood Type: ${patient['bloodType']}'),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.visibility),
-                          onPressed: () {
-                            Navigator.pop(context); // Close current dialog
-                            _viewPatientRecords(patient['id']);
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoTile(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$title:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      body: ResponsiveLayout(
+        mobile: _buildMobileLayout(),
+        desktop: _buildDesktopLayout(),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLayout() {
+    // Use the current route for the sidebar
+    final currentPath = '/admin${_currentTab.isNotEmpty ? '/$_currentTab' : ''}';
+    
+    return Row(
+      children: [
+        AppSidebar(
+          currentPath: currentPath,
+          userRole: 'hospitalAdmin',
+          userName: 'Admin User',
+          userEmail: 'admin@hospital.com',
+        ),
+        Expanded(
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(_getPageTitle()),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Notifications coming soon'))
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Search coming soon'))
+                    );
+                  },
+                ),
+                const SizedBox(width: 16),
+              ],
+            ),
+            body: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: _buildContent(),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout() {
+    final currentPath = '/admin${_currentTab.isNotEmpty ? '/$_currentTab' : ''}';
+    
+    return Scaffold(
       appBar: AppBar(
-        title: const Text('Hospital Admin Dashboard'),
+        title: Text(_getPageTitle()),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadUsers,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _signOut,
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notifications coming soon'))
+              );
+            },
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'Medical Personnel'),
-            Tab(text: 'Patients'),
-          ],
+      ),
+      drawer: Drawer(
+        child: AppSidebar(
+          currentPath: currentPath,
+          userRole: 'hospitalAdmin',
+          userName: 'Admin User',
+          userEmail: 'admin@hospital.com',
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                // Overview Tab
-                _buildOverviewTab(),
-                
-                // Medical Personnel Tab
-                _buildMedicalPersonnelTab(),
-                
-                // Patients Tab
-                _buildPatientsTab(),
-              ],
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: _buildContent(),
             ),
     );
   }
 
-  Widget _buildOverviewTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Hospital Statistics',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Total Patients',
-                  value: _patients.length.toString(),
-                  icon: Icons.people,
-                  color: Colors.blue,
-                ),
+  String _getPageTitle() {
+    switch (_currentTab) {
+      case 'doctors':
+        return 'Doctors Management';
+      case 'patients':
+        return 'Patients Management';
+      case 'appointments':
+        return 'Appointments Management';
+      case 'settings':
+        return 'Settings';
+      default:
+        return 'Admin Dashboard';
+    }
+  }
+
+  Widget _buildContent() {
+    switch (_currentTab) {
+      case 'doctors':
+        return _buildDoctorsSection();
+      case 'patients':
+        return _buildPatientsSection();
+      case 'appointments':
+        return _buildAppointmentsSection();
+      case 'settings':
+        return Center(child: Text('Settings page coming soon'));
+      default:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildWelcomeSection(),
+            const SizedBox(height: 24),
+            _buildStatsSection(),
+            const SizedBox(height: 24),
+            _buildTablesSection(),
+          ],
+        );
+    }
+  }
+
+  Widget _buildDoctorsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Manage Doctors',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Medical Personnel',
-                  value: _doctors.length.toString(),
-                  icon: Icons.medical_services,
-                  color: Colors.green,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          const Text(
-            'Recent Activity',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
             ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _patients.length > 5 ? 5 : _patients.length,
-              separatorBuilder: (_, __) => const Divider(),
-              itemBuilder: (context, index) {
-                final patient = _patients[index];
-                return ListTile(
-                  title: Text(patient['name']),
-                  subtitle: Text('Last updated: ${patient['lastUpdated']}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.visibility),
-                    onPressed: () => _viewPatientRecords(patient['id']),
-                  ),
-                );
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Add Doctor'),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin/doctors/add');
               },
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        DataTableWidget(
+          columns: ['Name', 'Email', 'Specialization', 'Patients'],
+          rows: _doctorsList,
+          onRowTap: (row) {
+            Navigator.pushNamed(context, '/admin/doctors/view/${row['id']}');
+          },
+          onEdit: (row) {
+            Navigator.pushNamed(context, '/admin/doctors/edit/${row['id']}');
+          },
+          onDelete: (row) {
+            _showDeleteConfirmation(context, 'doctor', row['id'], row['Name']);
+          },
+          maxHeight: 600,
+        ),
+      ],
     );
   }
 
-  Widget _buildMedicalPersonnelTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
+  Widget _buildPatientsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Manage Patients',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Add Patient'),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin/patients/add');
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        DataTableWidget(
+          columns: ['Name', 'Email', 'Phone', 'Condition'],
+          rows: _patientsList,
+          onRowTap: (row) {
+            Navigator.pushNamed(context, '/admin/patients/view/${row['id']}');
+          },
+          onEdit: (row) {
+            Navigator.pushNamed(context, '/admin/patients/edit/${row['id']}');
+          },
+          onDelete: (row) {
+            _showDeleteConfirmation(context, 'patient', row['id'], row['Name']);
+          },
+          maxHeight: 600,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppointmentsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Manage Appointments',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Create Appointment'),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin/appointments/add');
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        DataTableWidget(
+          columns: ['Patient', 'Doctor', 'Date', 'Time', 'Status', 'Type'],
+          rows: _recentAppointments,
+          onRowTap: (row) {
+            Navigator.pushNamed(context, '/admin/appointments/view/${row['id']}');
+          },
+          onEdit: (row) {
+            Navigator.pushNamed(context, '/admin/appointments/edit/${row['id']}');
+          },
+          onDelete: (row) {
+            _showDeleteConfirmation(context, 'appointment', row['id'], '${row['Patient']} with ${row['Doctor']}');
+          },
+          maxHeight: 600,
+        ),
+      ],
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, String itemType, String id, String name) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Delete $itemType'),
+          content: Text('Are you sure you want to delete $itemType: $name?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                try {
+                  // Implement the deletion logic based on itemType
+                  switch (itemType) {
+                    case 'doctor':
+                      await FirestoreService.deleteDoctor(id);
+                      break;
+                    case 'patient':
+                      await FirestoreService.deletePatient(id);
+                      break;
+                    case 'appointment':
+                      await FirestoreService.deleteAppointment(id);
+                      break;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('$itemType deleted successfully')),
+                  );
+                  _loadDashboardData(); // Refresh data
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error deleting $itemType: $e')),
+                  );
+                }
+              },
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildWelcomeSection() {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          children: [
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Add New Medical Personnel',
+                    'Welcome to E-Hospital Admin Dashboard',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _newDoctorNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Full Name',
-                      border: OutlineInputBorder(),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Manage your hospital data, doctors, patients, and appointments all in one place.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.neutral,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _newDoctorEmailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _newDoctorPasswordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Password',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _addNewDoctor,
-                    child: const Text('Add Medical Personnel'),
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/admin/doctors');
+                        },
+                        child: const Text('Manage Doctors'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/admin/patients');
+                        },
+                        child: const Text('Manage Patients'),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'All Medical Personnel',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _doctors.isEmpty 
-              ? const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Center(child: Text('No medical personnel found')),
-                  ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _doctors.length,
-                  itemBuilder: (context, index) {
-                    final doctor = _doctors[index];
-                    final assignedPatients = (doctor['assignedPatientIds'] as List).length;
-                    
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ExpansionTile(
-                        title: Text(doctor['name']),
-                        subtitle: Text('Email: ${doctor['email']} | Patients: $assignedPatients'),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.people),
-                                      label: const Text('View Patients'),
-                                      onPressed: () => _viewDoctorPatients(doctor['id']),
-                                    ),
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.person_add),
-                                      label: const Text('Assign Patient'),
-                                      onPressed: () => _showAssignPatientDialog(doctor['id']),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPatientsTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'All Patients',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _patients.isEmpty
-              ? const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Center(child: Text('No patients found')),
-                  ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _patients.length,
-                  itemBuilder: (context, index) {
-                    final patient = _patients[index];
-                    
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ExpansionTile(
-                        title: Text(patient['name']),
-                        subtitle: Text('Condition: ${patient['medicalCondition']}'),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _infoTile('Email', patient['email']),
-                                _infoTile('Blood Type', patient['bloodType']),
-                                _infoTile('Last Updated', patient['lastUpdated']),
-                                const SizedBox(height: 16),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.visibility),
-                                      label: const Text('View Clinical File'),
-                                      onPressed: () => _viewPatientRecords(patient['id']),
-                                    ),
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.edit),
-                                      label: const Text('Update Record'),
-                                      onPressed: () => _updatePatientRecord(patient['id']),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Icon(
-                  icon,
-                  color: color,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: color,
+            if (ResponsiveLayout.isDesktop(context)) ...[
+              const SizedBox(width: 40),
+              Icon(
+                Icons.local_hospital_rounded,
+                size: 150,
+                color: AppColors.primary,
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  void _showAssignPatientDialog(String doctorId) {
-    final doctor = _doctors.firstWhere((d) => d['id'] == doctorId);
-    final assignedPatientIds = doctor['assignedPatientIds'] as List;
-    final unassignedPatients = _patients.where((p) => !assignedPatientIds.contains(p['id'])).toList();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Assign Patient to ${doctor['name']}'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: unassignedPatients.isEmpty
-              ? const Center(child: Text('No unassigned patients available'))
-              : ListView.builder(
-                  itemCount: unassignedPatients.length,
-                  itemBuilder: (context, index) {
-                    final patient = unassignedPatients[index];
-                    return ListTile(
-                      title: Text(patient['name']),
-                      subtitle: Text('Condition: ${patient['medicalCondition']}'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _assignPatientToDoctor(doctorId, patient['id']);
-                      },
-                    );
-                  },
-                ),
+  Widget _buildStatsSection() {
+    final doctorCount = _dashboardData['doctorCount'] ?? 0;
+    final patientCount = _dashboardData['patientCount'] ?? 0;
+    final appointmentCount = _dashboardData['totalAppointments'] ?? 0;
+
+    return GridView.count(
+      crossAxisCount: ResponsiveLayout.isDesktop(context) ? 3 : 2,
+      crossAxisSpacing: 16,
+      mainAxisSpacing: 16,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        DashboardCard(
+          title: 'Doctors',
+          value: doctorCount.toString(),
+          icon: Icons.medical_services_outlined,
+          iconColor: AppColors.primary,
+          backgroundColor: AppColors.primary.withOpacity(0.1),
+          subtitle: '+3 new this month',
+          showIncreaseIcon: true,
+          onTap: () => Navigator.pushNamed(context, '/admin/doctors'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
+        DashboardCard(
+          title: 'Patients',
+          value: patientCount.toString(),
+          icon: Icons.people_outline,
+          iconColor: AppColors.secondary,
+          backgroundColor: AppColors.secondary.withOpacity(0.1),
+          subtitle: '+12 new this month',
+          showIncreaseIcon: true,
+          onTap: () => Navigator.pushNamed(context, '/admin/patients'),
+        ),
+        DashboardCard(
+          title: 'Appointments',
+          value: appointmentCount.toString(),
+          icon: Icons.calendar_today_outlined,
+          iconColor: Colors.purple,
+          backgroundColor: Colors.purple.withOpacity(0.1),
+          subtitle: '${_dashboardData['todayAppointments'] ?? 0} today',
+          onTap: () => Navigator.pushNamed(context, '/admin/appointments'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTablesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Recent Appointments',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/admin/appointments'),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        DataTableWidget(
+          columns: ['Patient', 'Doctor', 'Date', 'Time', 'Status', 'Type'],
+          rows: _recentAppointments,
+          onRowTap: (row) {
+            Navigator.pushNamed(context, '/admin/appointments/view/${row['id']}');
+          },
+          maxHeight: 300,
+        ),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Doctors',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/admin/doctors'),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        DataTableWidget(
+          columns: ['Name', 'Email', 'Specialization', 'Patients'],
+          rows: _doctorsList,
+          onRowTap: (row) {
+            Navigator.pushNamed(context, '/admin/doctors/view/${row['id']}');
+          },
+          maxHeight: 300,
+        ),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Recent Patients',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/admin/patients'),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        DataTableWidget(
+          columns: ['Name', 'Email', 'Phone', 'Condition'],
+          rows: _patientsList,
+          onRowTap: (row) {
+            Navigator.pushNamed(context, '/admin/patients/view/${row['id']}');
+          },
+          maxHeight: 300,
+        ),
+      ],
     );
   }
 }

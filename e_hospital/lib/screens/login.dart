@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
 import '../services/firestore_service.dart';
+import '../services/database_initializer.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isCreatingAccount = false;
+  bool _isInitializingDatabase = false;
 
   @override
   void initState() {
@@ -57,7 +59,18 @@ class _LoginScreenState extends State<LoginScreen> {
         email: email,
         password: password,
       );
-      // Auth state change will redirect user
+      
+      // Navigate based on user role
+      if (mounted) {
+        final role = await fetchRole();
+        if (role == 'hospitalAdmin') {
+          Navigator.pushReplacementNamed(context, '/admin');
+        } else if (role == 'medicalPersonnel') {
+          Navigator.pushReplacementNamed(context, '/medic');
+        } else {
+          Navigator.pushReplacementNamed(context, '/patient');
+        }
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Login failed: ${e.toString()}';
@@ -106,7 +119,10 @@ class _LoginScreenState extends State<LoginScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
       
-      // Auth state change will redirect user
+      // Navigate to patient dashboard after creating account
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/patient');
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Account creation failed: ${e.toString()}';
@@ -122,7 +138,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await populateSampleData();
+      // Use the database initializer instead of the missing populateSampleData method
+      await DatabaseInitializer.initializeDatabase(force: true);
       
       // Show success message
       if (mounted) {
@@ -147,6 +164,45 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  Future<void> _initializeDatabase() async {
+    setState(() {
+      _isInitializingDatabase = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await DatabaseInitializer.initializeDatabase();
+      
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Database initialized successfully. You can now log in with the sample accounts.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error initializing database: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error initializing database: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isInitializingDatabase = false;
         });
       }
     }
@@ -307,12 +363,37 @@ class _LoginScreenState extends State<LoginScreen> {
                   
                   const SizedBox(height: 32),
                   
-                  // Sample data button
+                  // Database initialization button (NEW)
+                  ElevatedButton.icon(
+                    onPressed: _isInitializingDatabase ? null : _initializeDatabase,
+                    icon: const Icon(Icons.restart_alt, color: Colors.white),
+                    label: _isInitializingDatabase
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Reset & Initialize Database',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Sample data button (deprecated, keep for compatibility)
                   TextButton.icon(
                     onPressed: _isLoading ? null : _createSampleUsers,
                     icon: const Icon(Icons.people, color: Colors.white),
                     label: const Text(
-                      'Create Sample Users',
+                      'Create Sample Users (Legacy)',
                       style: TextStyle(color: Colors.white),
                     ),
                   ),

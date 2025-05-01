@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'services/firestore_service.dart';
+import 'services/auth_service.dart';
 
 import 'screens/splash.dart';
 import 'screens/login.dart';
@@ -30,9 +31,53 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/admin', builder: (_, __) => const AdminDashboard()),
-      GoRoute(path: '/medic', builder: (_, __) => const MedicDashboard()),
-      GoRoute(path: '/patient', builder: (_, __) => const PatientDashboard()),
+      
+      // Admin routes
+      GoRoute(
+        path: '/admin', 
+        builder: (_, __) => const AdminDashboard(),
+        routes: [
+          GoRoute(path: 'doctors', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: 'patients', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: 'appointments', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: 'departments', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: 'staff', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: 'reports', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: 'settings', builder: (_, __) => const AdminDashboard()),
+        ]
+      ),
+      
+      // Medic routes
+      GoRoute(
+        path: '/medic', 
+        builder: (_, __) => const MedicDashboard(),
+        routes: [
+          GoRoute(path: 'patients', builder: (_, __) => const MedicDashboard()),
+          GoRoute(path: 'patients/:id', builder: (context, state) {
+            final patientId = state.pathParameters['id']!;
+            return MedicDashboard(selectedPatientId: patientId);
+          }),
+          GoRoute(path: 'appointments', builder: (_, __) => const MedicDashboard()),
+          GoRoute(path: 'records', builder: (_, __) => const MedicDashboard()),
+          GoRoute(path: 'prescriptions', builder: (_, __) => const MedicDashboard()),
+          GoRoute(path: 'lab-results', builder: (_, __) => const MedicDashboard()),
+          GoRoute(path: 'profile', builder: (_, __) => const MedicDashboard()),
+        ]
+      ),
+      
+      // Patient routes
+      GoRoute(
+        path: '/patient', 
+        builder: (_, __) => const PatientDashboard(),
+        routes: [
+          GoRoute(path: 'appointments', builder: (_, __) => const PatientDashboard()),
+          GoRoute(path: 'doctors', builder: (_, __) => const PatientDashboard()),
+          GoRoute(path: 'records', builder: (_, __) => const PatientDashboard()),
+          GoRoute(path: 'prescriptions', builder: (_, __) => const PatientDashboard()),
+          GoRoute(path: 'lab-results', builder: (_, __) => const PatientDashboard()),
+          GoRoute(path: 'profile', builder: (_, __) => const PatientDashboard()),
+        ]
+      ),
     ],
     redirect: (ctx, state) async {
       // 1) if not logged in → everything redirects to /login
@@ -47,7 +92,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         _                   => '/patient',
       };
 
-      return state.path == target ? null : target;
+      // Allow navigation to the target path or any sub-path of target
+      final path = state.path ?? '/';
+      return path.startsWith(target) ? null : target;
     },
   );
 });

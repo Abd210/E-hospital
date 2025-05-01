@@ -1,29 +1,51 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
+import 'package:e_hospital/core/widgets/app_sidebar.dart';
+import 'package:e_hospital/core/widgets/responsive_layout.dart';
+import 'package:e_hospital/core/widgets/dashboard_card.dart';
+import 'package:e_hospital/core/widgets/chart_card.dart';
+import 'package:e_hospital/core/widgets/data_table_widget.dart';
+import 'package:e_hospital/theme/app_theme.dart';
+import 'package:e_hospital/services/firestore_service.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 
 class MedicDashboard extends StatefulWidget {
-  const MedicDashboard({super.key});
+  final String? selectedPatientId;
+  final String? initialTab;
+  
+  const MedicDashboard({
+    Key? key,
+    this.selectedPatientId,
+    this.initialTab,
+  }) : super(key: key);
 
   @override
   State<MedicDashboard> createState() => _MedicDashboardState();
 }
 
 class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProviderStateMixin {
-  final _db = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
-  late TabController _tabController;
-  List<Map<String, dynamic>> _assignedPatients = [];
-  List<String> _assignedPatientIds = [];
-  Map<String, dynamic>? _currentUserData;
   bool _isLoading = true;
+  Map<String, dynamic> _dashboardData = {};
+  List<Map<String, dynamic>> _myPatients = [];
+  List<Map<String, dynamic>> _upcomingAppointments = [];
+  List<Map<String, dynamic>> _recentMedicalRecords = [];
+  String _doctorName = '';
+  String _doctorEmail = '';
+  String _doctorSpecialty = '';
+  late String _currentTab;
+  
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadUserInfo();
+    _currentTab = widget.initialTab ?? '';
+    _tabController = TabController(length: 3, vsync: this);
+    _loadDashboardData();
+    
+    // If a patient ID is selected, switch to patients tab
+    if (widget.selectedPatientId != null) {
+      _currentTab = 'patients';
+    }
   }
 
   @override
@@ -32,658 +54,674 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
     super.dispose();
   }
 
-  Future<void> _loadUserInfo() async {
-    setState(() => _isLoading = true);
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return;
+  Future<void> _loadDashboardData() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-      // Load current medical personnel data
-      final userDoc = await _db.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        setState(() => _isLoading = false);
+    try {
+      // Get current user ID
+      final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) {
         return;
       }
 
-      final userData = userDoc.data() ?? {};
-      _assignedPatientIds = List<String>.from(userData['assignedPatientIds'] ?? []);
-      
-      // Load assigned patient details
-      final patients = <Map<String, dynamic>>[];
-      
-      for (final patientId in _assignedPatientIds) {
-        try {
-          final patientDoc = await _db.collection('users').doc(patientId).get();
-          if (patientDoc.exists) {
-            final data = patientDoc.data() ?? {};
-            patients.add({
-              'id': patientDoc.id,
-              'name': data['name'] ?? data['email']?.split('@').first ?? 'Unknown',
-              'email': data['email'] ?? 'No email',
-              'medicalCondition': data['medicalCondition'] ?? 'Not specified',
-              'bloodType': data['bloodType'] ?? 'Unknown',
-              'lastCheckup': data['lastCheckup'] ?? 'Not available',
-              'vitals': data['vitals'] ?? {
-                'heartRate': '72 bpm',
-                'bloodPressure': '120/80 mmHg',
-                'temperature': '36.6 °C',
-                'oxygenSaturation': '98%',
-              },
-              'treatments': data['treatments'] ?? [],
-              'diagnostics': data['diagnostics'] ?? [],
-              'lastUpdated': data['lastUpdated'] ?? DateTime.now().toString(),
-            });
-          }
-        } catch (e) {
-          debugPrint('Error loading patient $patientId: $e');
-        }
+      // Get doctor data
+      final doctor = await FirestoreService.getUserById(currentUserId);
+      if (doctor != null) {
+        _doctorName = doctor.name;
+        _doctorEmail = doctor.email;
+        _doctorSpecialty = (doctor.profile as Map<String, dynamic>?)?['specialization'] ?? 'General';
+
+        // Get dashboard data
+        _dashboardData = await FirestoreService.getDoctorDashboardData(currentUserId);
+
+        // Get my patients
+        final patients = await FirestoreService.getDoctorPatients(currentUserId);
+        _myPatients = patients.map((patient) {
+          return {
+            'id': patient.id,
+            'Name': patient.name,
+            'Age': patient.age.toString(),
+            'Gender': patient.gender,
+            'Condition': patient.medicalCondition,
+            'Last Checkup': patient.lastCheckup?.toString() ?? 'Not Available',
+          };
+        }).toList();
+
+        // Get upcoming appointments
+        final appointments = await FirestoreService.getDoctorUpcomingAppointments(currentUserId);
+        _upcomingAppointments = appointments.map((appointment) => {
+          'id': appointment.id,
+          'Patient': appointment.patientName,
+          'Date': appointment.appointmentDate,
+          'Time': appointment.time,
+          'Type': appointment.type.toString().split('.').last,
+          'Status': appointment.status.toString().split('.').last,
+        }).toList();
+
+        // Mock recent medical records data
+        _recentMedicalRecords = [
+          {
+            'id': '1',
+            'Patient': 'John Patient',
+            'Date': DateTime.now().subtract(const Duration(days: 3)),
+            'Type': 'Diagnostic',
+            'Description': 'Hypertension Assessment',
+          },
+          {
+            'id': '2',
+            'Patient': 'Sarah Patient',
+            'Date': DateTime.now().subtract(const Duration(days: 5)),
+            'Type': 'Treatment',
+            'Description': 'Diabetes Medication Adjustment',
+          },
+          {
+            'id': '3',
+            'Patient': 'Michael Smith',
+            'Date': DateTime.now().subtract(const Duration(days: 7)),
+            'Type': 'Lab Result',
+            'Description': 'Blood Test Analysis',
+          },
+        ];
       }
-      
-      setState(() {
-        _currentUserData = userData;
-        _assignedPatients = patients;
-        _isLoading = false;
-      });
     } catch (e) {
-      debugPrint('Error loading user data: $e');
-      setState(() => _isLoading = false);
+      debugPrint('Error loading dashboard data: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
-  }
-
-  void _signOut() async {
-    await _auth.signOut();
-    if (mounted) {
-      context.go('/login');
-    }
-  }
-  
-  Future<void> _updatePatientDiagnostic(String patientId) async {
-    final TextEditingController diagnosticController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Update Diagnostic'),
-        content: TextField(
-          controller: diagnosticController,
-          decoration: const InputDecoration(
-            labelText: 'Diagnostic',
-            hintText: 'Enter medical diagnostic',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final diagnostic = diagnosticController.text.trim();
-              if (diagnostic.isEmpty) return;
-              
-              Navigator.pop(context);
-              
-              try {
-                final patientDoc = await _db.collection('users').doc(patientId).get();
-                final data = patientDoc.data() ?? {};
-                final List<dynamic> currentDiagnostics = List.from(data['diagnostics'] ?? []);
-                
-                currentDiagnostics.add({
-                  'description': diagnostic,
-                  'date': DateTime.now().toIso8601String(),
-                  'doctorId': _auth.currentUser?.uid,
-                  'doctorName': _currentUserData?['name'] ?? 'Unknown Doctor',
-                });
-                
-                await _db.collection('users').doc(patientId).update({
-                  'diagnostics': currentDiagnostics,
-                  'medicalCondition': diagnostic,
-                  'lastUpdated': DateTime.now().toString(),
-                });
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Diagnostic updated successfully')),
-                );
-                
-                _loadUserInfo();
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error updating diagnostic: $e')),
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Future<void> _addTreatment(String patientId) async {
-    final TextEditingController treatmentController = TextEditingController();
-    final TextEditingController medicationController = TextEditingController();
-    final TextEditingController dosageController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Prescribe Treatment'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: treatmentController,
-                decoration: const InputDecoration(
-                  labelText: 'Treatment Plan',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: medicationController,
-                decoration: const InputDecoration(
-                  labelText: 'Medication',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: dosageController,
-                decoration: const InputDecoration(
-                  labelText: 'Dosage & Frequency',
-                  hintText: 'e.g., 500mg 3x daily',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final treatment = treatmentController.text.trim();
-              final medication = medicationController.text.trim();
-              final dosage = dosageController.text.trim();
-              
-              if (treatment.isEmpty || medication.isEmpty || dosage.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('All fields are required')),
-                );
-                return;
-              }
-              
-              Navigator.pop(context);
-              
-              try {
-                final patientDoc = await _db.collection('users').doc(patientId).get();
-                final data = patientDoc.data() ?? {};
-                final List<dynamic> currentTreatments = List.from(data['treatments'] ?? []);
-                
-                currentTreatments.add({
-                  'description': treatment,
-                  'medication': medication,
-                  'dosage': dosage,
-                  'date': DateTime.now().toIso8601String(),
-                  'doctorId': _auth.currentUser?.uid,
-                  'doctorName': _currentUserData?['name'] ?? 'Unknown Doctor',
-                });
-                
-                await _db.collection('users').doc(patientId).update({
-                  'treatments': currentTreatments,
-                  'lastUpdated': DateTime.now().toString(),
-                });
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Treatment added successfully')),
-                );
-                
-                _loadUserInfo();
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error adding treatment: $e')),
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _viewPatientClinicalFile(String patientId) async {
-    final patient = _assignedPatients.firstWhere((p) => p['id'] == patientId);
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${patient['name']}\'s Clinical File'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 500,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              _infoTile('Full Name', patient['name']),
-              _infoTile('Email', patient['email']),
-              _infoTile('Medical Condition', patient['medicalCondition']),
-              _infoTile('Blood Type', patient['bloodType']),
-              _infoTile('Last Updated', patient['lastUpdated']),
-              
-              const Divider(),
-              const Text('Vitals', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              
-              if (patient['vitals'] != null && patient['vitals'] is Map && (patient['vitals'] as Map).isNotEmpty) ...[
-                _infoTile('Heart Rate', patient['vitals']['heartRate'] ?? 'N/A'),
-                _infoTile('Blood Pressure', patient['vitals']['bloodPressure'] ?? 'N/A'),
-                _infoTile('Temperature', patient['vitals']['temperature'] ?? 'N/A'),
-                _infoTile('Oxygen Saturation', patient['vitals']['oxygenSaturation'] ?? 'N/A'),
-              ] else
-                const Text('No vitals information available'),
-              
-              const Divider(),
-              const Text('Diagnostics', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              
-              if (patient['diagnostics'] != null && patient['diagnostics'] is List && (patient['diagnostics'] as List).isNotEmpty)
-                ...List.generate((patient['diagnostics'] as List).length, (index) {
-                  final diagnostic = (patient['diagnostics'] as List)[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Description: ${diagnostic['description']}'),
-                          Text('Date: ${diagnostic['date']}'),
-                          Text('Doctor: ${diagnostic['doctorName']}'),
-                        ],
-                      ),
-                    ),
-                  );
-                })
-              else
-                const Text('No diagnostic information available'),
-                
-              const Divider(),
-              const Text('Treatments', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              
-              if (patient['treatments'] != null && patient['treatments'] is List && (patient['treatments'] as List).isNotEmpty)
-                ...List.generate((patient['treatments'] as List).length, (index) {
-                  final treatment = (patient['treatments'] as List)[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Medication: ${treatment['medication']}'),
-                          Text('Dosage: ${treatment['dosage']}'),
-                          Text('Description: ${treatment['description']}'),
-                          Text('Date: ${treatment['date']}'),
-                          Text('Doctor: ${treatment['doctorName']}'),
-                        ],
-                      ),
-                    ),
-                  );
-                })
-              else
-                const Text('No treatment information available'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _infoTile(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$title:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      body: ResponsiveLayout(
+        mobile: _buildMobileLayout(),
+        desktop: _buildDesktopLayout(),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLayout() {
+    final currentPath = '/medic${_currentTab.isNotEmpty ? '/$_currentTab' : ''}';
+    
+    return Row(
+      children: [
+        AppSidebar(
+          currentPath: currentPath,
+          userRole: 'medicalPersonnel',
+          userName: _doctorName,
+          userEmail: _doctorEmail,
+        ),
+        Expanded(
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(_getPageTitle()),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Notifications coming soon'))
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Search coming soon'))
+                    );
+                  },
+                ),
+                const SizedBox(width: 16),
+              ],
+            ),
+            body: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: _buildContent(),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout() {
+    final currentPath = '/medic${_currentTab.isNotEmpty ? '/$_currentTab' : ''}';
+    
+    return Scaffold(
       appBar: AppBar(
-        title: Text('Doctor Dashboard: ${_currentUserData?['name'] ?? 'Loading...'}'),
+        title: Text(_getPageTitle()),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadUserInfo,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _signOut,
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notifications coming soon'))
+              );
+            },
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Assigned Patients'),
-            Tab(text: 'Profile'),
-          ],
+      ),
+      drawer: Drawer(
+        child: AppSidebar(
+          currentPath: currentPath,
+          userRole: 'medicalPersonnel',
+          userName: _doctorName,
+          userEmail: _doctorEmail,
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildAssignedPatientsTab(),
-                _buildProfileTab(),
-              ],
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: _buildContent(),
             ),
     );
   }
-
-  Widget _buildAssignedPatientsTab() {
-    return _assignedPatients.isEmpty
-        ? Center(
+  
+  String _getPageTitle() {
+    switch (_currentTab) {
+      case 'patients':
+        return widget.selectedPatientId != null ? 'Patient Details' : 'My Patients';
+      case 'appointments':
+        return 'Appointments';
+      case 'records':
+        return 'Medical Records';
+      case 'prescriptions':
+        return 'Prescriptions';
+      case 'lab-results':
+        return 'Laboratory Results';
+      case 'profile':
+        return 'My Profile';
+      default:
+        return 'Doctor Dashboard';
+    }
+  }
+  
+  Widget _buildContent() {
+    switch (_currentTab) {
+      case 'patients':
+        return widget.selectedPatientId != null 
+            ? _buildPatientDetails() 
+            : _buildPatientsSection();
+      case 'appointments':
+        return _buildAppointmentsSection();
+      case 'records':
+        return _buildMedicalRecordsSection();
+      case 'prescriptions':
+        return Center(child: Text('Prescriptions page coming soon'));
+      case 'lab-results':
+        return Center(child: Text('Lab Results page coming soon'));
+      case 'profile':
+        return _buildDoctorProfile();
+      default:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildWelcomeSection(),
+            const SizedBox(height: 24),
+            _buildStatsSection(),
+            const SizedBox(height: 24),
+            _buildTabSection(),
+          ],
+        );
+    }
+  }
+  
+  Widget _buildPatientDetails() {
+    // Show details of the selected patient
+    final patient = _myPatients.firstWhere(
+      (p) => p['id'] == widget.selectedPatientId,
+      orElse: () => {'Name': 'Unknown Patient', 'Condition': 'N/A'},
+    );
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.people, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text(
-                  'No patients assigned to you yet',
-                  style: TextStyle(fontSize: 18),
-                ),
-                const SizedBox(height: 24),
                 Text(
-                  'The hospital administrator will assign patients to you',
-                  style: TextStyle(color: Colors.grey[600]),
+                  'Patient: ${patient['Name']}',
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Text('Age: ${patient['Age']}'),
+                Text('Gender: ${patient['Gender']}'),
+                Text('Medical Condition: ${patient['Condition']}'),
+                Text('Last Checkup: ${patient['Last Checkup']}'),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/medic/patients');
+                  },
+                  child: const Text('Back to All Patients'),
                 ),
               ],
             ),
-          )
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _assignedPatients.length,
-            itemBuilder: (context, index) {
-              final patient = _assignedPatients[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 16),
-                child: ExpansionTile(
-                  title: Text(patient['name']),
-                  subtitle: Text('Medical Condition: ${patient['medicalCondition']}'),
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.blue,
-                    child: Icon(Icons.person, color: Colors.white),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _infoTile('Blood Type', patient['bloodType']),
-                          const SizedBox(height: 16),
-                          
-                          // Vitals section
-                          const Text(
-                            'Latest Vitals',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (patient['vitals'] != null && (patient['vitals'] as Map).isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Column(
-                                children: [
-                                  _buildVitalRow(
-                                    icon: Icons.favorite,
-                                    label: 'Heart Rate',
-                                    value: patient['vitals']['heartRate'] ?? 'N/A',
-                                  ),
-                                  _buildVitalRow(
-                                    icon: Icons.speed,
-                                    label: 'Blood Pressure',
-                                    value: patient['vitals']['bloodPressure'] ?? 'N/A',
-                                  ),
-                                  _buildVitalRow(
-                                    icon: Icons.thermostat,
-                                    label: 'Temperature',
-                                    value: patient['vitals']['temperature'] ?? 'N/A',
-                                  ),
-                                  _buildVitalRow(
-                                    icon: Icons.air,
-                                    label: 'O₂ Saturation',
-                                    value: patient['vitals']['oxygenSaturation'] ?? 'N/A',
-                                    isLast: true,
-                                  ),
-                                ],
-                              ),
-                            )
-                          else
-                            const Text('No vitals available'),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // Action buttons
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildActionButton(
-                                label: 'View Clinical File',
-                                icon: Icons.visibility,
-                                onPressed: () => _viewPatientClinicalFile(patient['id']),
-                              ),
-                              _buildActionButton(
-                                label: 'Update Diagnostic',
-                                icon: Icons.medical_information,
-                                onPressed: () => _updatePatientDiagnostic(patient['id']),
-                              ),
-                              _buildActionButton(
-                                label: 'Add Treatment',
-                                icon: Icons.medication,
-                                onPressed: () => _addTreatment(patient['id']),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-  }
-
-  Widget _buildVitalRow({
-    required IconData icon,
-    required String label,
-    required String value,
-    bool isLast = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 22, color: Colors.blue.shade700),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const Spacer(),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
           ),
-          if (!isLast)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Divider(color: Colors.blue.shade200, height: 1),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Patient Medical History',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'No medical history records available for this patient.',
+          style: TextStyle(fontStyle: FontStyle.italic),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildPatientsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'My Patients',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 24),
+        DataTableWidget(
+          columns: ['Name', 'Age', 'Gender', 'Condition', 'Last Checkup'],
+          rows: _myPatients,
+          onRowTap: (row) {
+            // View patient details
+            Navigator.pushNamed(context, '/medic/patients/${row['id']}');
+          },
+          maxHeight: 600,
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildAppointmentsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'All Appointments',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 24),
+        DataTableWidget(
+          columns: ['Patient', 'Date', 'Time', 'Type', 'Status'],
+          rows: _upcomingAppointments,
+          onRowTap: (row) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Selected appointment: ${row['Patient']}'))
+            );
+          },
+          maxHeight: 600,
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildMedicalRecordsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Medical Records',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 24),
+        DataTableWidget(
+          columns: ['Patient', 'Date', 'Type', 'Description'],
+          rows: _recentMedicalRecords,
+          onRowTap: (row) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Selected record: ${row['Description']}'))
+            );
+          },
+          maxHeight: 600,
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildDoctorProfile() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Center(
+              child: CircleAvatar(
+                radius: 60,
+                backgroundColor: AppColors.primary.withOpacity(0.2),
+                child: Icon(
+                  Icons.person,
+                  color: AppColors.primary,
+                  size: 80,
+                ),
+              ),
             ),
+            const SizedBox(height: 20),
+            Center(
+              child: Text(
+                'Dr. $_doctorName',
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Center(
+              child: Text(
+                _doctorSpecialty,
+                style: TextStyle(fontSize: 18, color: AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 30),
+            const Divider(),
+            const SizedBox(height: 16),
+            _buildProfileRow('Email', _doctorEmail),
+            _buildProfileRow('Phone', '+1 555-123-4567'),
+            _buildProfileRow('Experience', '7 years'),
+            _buildProfileRow('Patients', '${_myPatients.length}'),
+            _buildProfileRow('License Number', 'MD-123456'),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildProfileRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildActionButton({
-    required String label,
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+  Widget _buildWelcomeSection() {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
-    );
-  }
-
-  Widget _buildProfileTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const CircleAvatar(
-            radius: 60,
-            backgroundColor: Colors.blue,
-            child: Icon(Icons.medical_services, size: 64, color: Colors.white),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            _currentUserData?['name'] ?? 'Loading...',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _currentUserData?['email'] ?? '',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade100,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              'Medical Personnel',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.blue,
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          children: [
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Your Assigned Patients',
-                    style: TextStyle(
-                      fontSize: 18,
+                  Text(
+                    'Welcome, Dr. $_doctorName',
+                    style: const TextStyle(
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Specialty: $_doctorSpecialty',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'You have ${_upcomingAppointments.length} upcoming appointments today.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.neutral,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    'Total: ${_assignedPatients.length}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                    ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pushNamed(context, '/medic/appointments'),
+                    child: const Text('View Appointments'),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Quick Actions',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  ListTile(
-                    leading: Icon(Icons.assignment),
-                    title: Text('View Recent Diagnostics'),
-                    trailing: Icon(Icons.arrow_forward_ios, size: 16),
-                  ),
-                  Divider(),
-                  ListTile(
-                    leading: Icon(Icons.medication),
-                    title: Text('Prescribed Treatments'),
-                    trailing: Icon(Icons.arrow_forward_ios, size: 16),
-                  ),
-                ],
+            if (ResponsiveLayout.isDesktop(context)) ...[
+              const SizedBox(width: 40),
+              Icon(
+                Icons.medical_services_rounded,
+                size: 150,
+                color: AppColors.primary,
               ),
-            ),
-          ),
-        ],
+            ],
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildStatsSection() {
+    final patientCount = _dashboardData['patientCount'] ?? 0;
+    final appointmentCount = _dashboardData['appointmentCount'] ?? 0;
+    final todayAppointments = (_dashboardData['todayAppointments'] as List?)?.length ?? 0;
+
+    return GridView.count(
+      crossAxisCount: ResponsiveLayout.isDesktop(context) ? 3 : 2,
+      crossAxisSpacing: 16,
+      mainAxisSpacing: 16,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        DashboardCard(
+          title: 'My Patients',
+          value: patientCount.toString(),
+          icon: Icons.people_outline,
+          iconColor: AppColors.primary,
+          backgroundColor: AppColors.primary.withOpacity(0.1),
+          subtitle: '+2 new this month',
+          showIncreaseIcon: true,
+          onTap: () => Navigator.pushNamed(context, '/medic/patients'),
+        ),
+        DashboardCard(
+          title: 'Appointments',
+          value: appointmentCount.toString(),
+          icon: Icons.calendar_today_outlined,
+          iconColor: AppColors.secondary,
+          backgroundColor: AppColors.secondary.withOpacity(0.1),
+          subtitle: '$todayAppointments today',
+          onTap: () => Navigator.pushNamed(context, '/medic/appointments'),
+        ),
+        DashboardCard(
+          title: 'Medical Records',
+          value: '48',
+          icon: Icons.folder_outlined,
+          iconColor: Colors.orange,
+          backgroundColor: Colors.orange.withOpacity(0.1),
+          subtitle: '3 new this week',
+          showIncreaseIcon: true,
+          onTap: () => Navigator.pushNamed(context, '/medic/records'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabSection() {
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Upcoming Appointments'),
+            Tab(text: 'My Patients'),
+            Tab(text: 'Recent Medical Records'),
+          ],
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.neutral,
+          indicatorColor: AppColors.primary,
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 400,
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildAppointmentsTab(),
+              _buildPatientsTab(),
+              _buildMedicalRecordsTab(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppointmentsTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Upcoming Appointments',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/medic/appointments'),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: DataTableWidget(
+            columns: ['Patient', 'Date', 'Time', 'Type', 'Status'],
+            rows: _upcomingAppointments,
+            onRowTap: (row) {
+              // Handle appointment tap
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Selected appointment for: ${row['Patient']}'))
+              );
+            },
+            onEdit: (row) {
+              // Handle edit
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Edit appointment for: ${row['Patient']}'))
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPatientsTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'My Patients',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/medic/patients'),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: DataTableWidget(
+            columns: ['Name', 'Age', 'Gender', 'Condition', 'Last Checkup'],
+            rows: _myPatients,
+            onRowTap: (row) {
+              // Handle patient tap
+              Navigator.pushNamed(context, '/medic/patients/${row['id']}');
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMedicalRecordsTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Recent Medical Records',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/medic/records'),
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: DataTableWidget(
+            columns: ['Patient', 'Date', 'Type', 'Description'],
+            rows: _recentMedicalRecords,
+            onRowTap: (row) {
+              // Handle record tap
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Selected medical record: ${row['Type']} for ${row['Patient']}'))
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
