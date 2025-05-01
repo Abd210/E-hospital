@@ -7,15 +7,15 @@ import 'services/firestore_service.dart';
 
 import 'screens/splash.dart';
 import 'screens/login.dart';
-import 'screens/admin_home.dart';
-import 'screens/medic_home.dart';
-import 'screens/patient_home.dart';
+import 'screens/admin_dashboard.dart';
+import 'screens/medic_dashboard.dart';
+import 'screens/patient_dashboard.dart';
 
 /// auth-state stream
 final authProvider =
     StreamProvider<User?>((ref) => FirebaseAuth.instance.authStateChanges());
 
-/// a future provider that gets the role every time we’re logged in
+/// a future provider that gets the role every time we're logged in
 final roleProvider = FutureProvider<String?>((ref) async {
   final user = ref.watch(authProvider).value;
   if (user == null) return null;
@@ -30,14 +30,14 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/admin', builder: (_, __) => const AdminHome()),
-      GoRoute(path: '/medic', builder: (_, __) => const MedicHome()),
-      GoRoute(path: '/patient', builder: (_, __) => const PatientHome()),
+      GoRoute(path: '/admin', builder: (_, __) => const AdminDashboard()),
+      GoRoute(path: '/medic', builder: (_, __) => const MedicDashboard()),
+      GoRoute(path: '/patient', builder: (_, __) => const PatientDashboard()),
     ],
     redirect: (ctx, state) async {
       // 1) if not logged in → everything redirects to /login
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return state.subloc == '/login' ? null : '/login';
+      if (user == null) return state.path == '/login' ? null : '/login';
 
       // 2) fetch role once
       final role = await fetchRole();
@@ -47,7 +47,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         _                   => '/patient',
       };
 
-      return state.subloc == target ? null : target;
+      return state.path == target ? null : target;
     },
   );
 });
