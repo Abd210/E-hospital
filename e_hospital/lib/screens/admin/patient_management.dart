@@ -5,6 +5,7 @@ import 'package:e_hospital/services/firestore_service.dart';
 import 'package:e_hospital/models/patient.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class PatientManagement extends StatefulWidget {
   final String? patientId;
@@ -37,6 +38,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
   final _weightController = TextEditingController();
   final _allergiesController = TextEditingController();
   final _medicalConditionController = TextEditingController();
+  final _passwordController = TextEditingController();
   
   // Patient data
   Patient? _patientData;
@@ -48,7 +50,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     if (widget.action != 'add' && widget.patientId != null) {
       _loadPatientData();
     }
@@ -67,6 +69,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
     _weightController.dispose();
     _allergiesController.dispose();
     _medicalConditionController.dispose();
+    _passwordController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -254,16 +257,25 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
       };
       
       if (widget.action == 'add') {
-        // Create new patient
-        await FirestoreService.createPatient(patientData);
+        // Create new patient with authentication
+        final password = _passwordController.text;
+        final result = await FirestoreService.createPatientWithAuth(patientData, password);
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Patient created successfully')),
+            SnackBar(content: Text(result['message'])),
           );
-          Navigator.pushReplacementNamed(context, '/admin/patients');
+          
+          if (result['success']) {
+            Navigator.pushReplacementNamed(context, '/admin/patients');
+          } else {
+            setState(() {
+              _isLoading = false;
+            });
+          }
         }
       } else if (widget.action == 'edit') {
-        // Update existing patient
+        // Update existing patient - no need to update authentication
         await FirestoreService.updatePatient(widget.patientId!, patientData);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -277,9 +289,6 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error saving patient: $e')),
         );
-      }
-    } finally {
-      if (mounted) {
         setState(() {
           _isLoading = false;
         });
@@ -428,6 +437,114 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
         IconButton(
           icon: const Icon(Icons.delete),
           onPressed: _deletePatient,
+        ),
+      );
+      actions.add(
+        ElevatedButton(
+          onPressed: () async {
+            // Get current user ID (assume it's a doctor for testing)
+            final doctorId = FirebaseAuth.instance.currentUser?.uid;
+            if (doctorId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('User not authenticated')),
+              );
+              return;
+            }
+            
+            // Show loading indicator
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const Center(child: CircularProgressIndicator()),
+            );
+            
+            try {
+              // Create sample appointments
+              await FirestoreService.createSampleAppointments(doctorId, widget.patientId!);
+              
+              if (context.mounted) {
+                // Hide loading indicator
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Sample appointments created successfully')),
+                );
+                
+                // Reload patient data
+                _loadPatientData();
+              }
+            } catch (e) {
+              if (context.mounted) {
+                // Hide loading indicator
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error creating sample appointments: $e')),
+                );
+              }
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+          ),
+          child: const Text('Create Test Appointments'),
+        ),
+      );
+      actions.add(
+        ElevatedButton(
+          onPressed: () async {
+            // Get current user ID (assume it's a doctor for testing)
+            final doctorId = FirebaseAuth.instance.currentUser?.uid;
+            if (doctorId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('User not authenticated')),
+              );
+              return;
+            }
+            
+            // Show loading indicator
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const Center(child: CircularProgressIndicator()),
+            );
+            
+            try {
+              // Create direct test appointment
+              final success = await FirestoreService.addDirectTestAppointment(doctorId, widget.patientId!);
+              
+              if (context.mounted) {
+                // Hide loading indicator
+                Navigator.pop(context);
+                
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Direct test appointment created successfully')),
+                  );
+                  
+                  // Wait a moment to ensure Firestore is updated
+                  await Future.delayed(const Duration(seconds: 1));
+                  
+                  // Reload patient data
+                  _loadPatientData();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to create direct test appointment')),
+                  );
+                }
+              }
+            } catch (e) {
+              if (context.mounted) {
+                // Hide loading indicator
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error creating direct test appointment: $e')),
+                );
+              }
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+          ),
+          child: const Text('Create Direct Test'),
         ),
       );
     } else if (widget.action == 'edit' || widget.action == 'add') {
@@ -609,7 +726,6 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           unselectedLabelColor: Colors.grey,
           indicatorColor: AppColors.primary,
           tabs: const [
-            Tab(text: 'Appointments'),
             Tab(text: 'Medical Records'),
             Tab(text: 'Prescriptions'),
             Tab(text: 'Lab Results'),
@@ -620,75 +736,10 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildAppointmentsTab(),
               _buildMedicalRecordsTab(),
               _buildPrescriptionsTab(),
               _buildLabResultsTab(),
             ],
-          ),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildAppointmentsTab() {
-    if (_appointmentsList.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('No appointments found for this patient'),
-        ),
-      );
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('Add Appointment'),
-              onPressed: () {
-                Navigator.pushNamed(context, '/admin/appointments/add', arguments: {'patientId': widget.patientId});
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: ListView.builder(
-            itemCount: _appointmentsList.length,
-            itemBuilder: (context, index) {
-              final appointment = _appointmentsList[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  title: Text('Dr. ${appointment['Doctor']}'),
-                  subtitle: Text(
-                    '${_formatDate(appointment['Date'])}, ${appointment['Time']} - ${appointment['Type']}',
-                  ),
-                  trailing: Chip(
-                    label: Text(
-                      appointment['Status'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                      ),
-                    ),
-                    backgroundColor: _getStatusColor(appointment['Status']),
-                  ),
-                  onTap: () {
-                    Navigator.pushNamed(
-                      context, 
-                      '/admin/appointments/view/${appointment['id']}',
-                    );
-                  },
-                ),
-              );
-            },
           ),
         ),
       ],
@@ -955,6 +1006,26 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
                       return null;
                     },
                   ),
+                  const SizedBox(height: 16),
+                  if (widget.action == 'add')
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(),
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a password';
+                        }
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters long';
+                        }
+                        return null;
+                      },
+                    ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _phoneController,

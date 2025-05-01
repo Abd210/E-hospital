@@ -32,6 +32,7 @@ class _DoctorManagementState extends State<DoctorManagement> {
   final _experienceController = TextEditingController();
   final _addressController = TextEditingController();
   final _bioController = TextEditingController();
+  final _passwordController = TextEditingController();
   
   // Doctor data
   Doctor? _doctorData;
@@ -57,6 +58,7 @@ class _DoctorManagementState extends State<DoctorManagement> {
     _experienceController.dispose();
     _addressController.dispose();
     _bioController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
   
@@ -223,20 +225,30 @@ class _DoctorManagementState extends State<DoctorManagement> {
           'bio': _bioController.text,
           'patientCount': _doctorData?.profile?['patientCount'] ?? 0,
           'lastUpdated': Timestamp.now(),
-        }
+        },
+        'assignedPatientIds': _doctorData?.assignedPatientIds ?? [],
       };
       
       if (widget.action == 'add') {
-        // Create new doctor
-        await FirestoreService.createDoctor(doctorData);
+        // Create new doctor with authentication
+        final password = _passwordController.text;
+        final result = await FirestoreService.createDoctorWithAuth(doctorData, password);
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Doctor created successfully')),
+            SnackBar(content: Text(result['message'])),
           );
-          Navigator.pushReplacementNamed(context, '/admin/doctors');
+          
+          if (result['success']) {
+            Navigator.pushReplacementNamed(context, '/admin/doctors');
+          } else {
+            setState(() {
+              _isLoading = false;
+            });
+          }
         }
       } else if (widget.action == 'edit') {
-        // Update existing doctor
+        // Update existing doctor - no need to update authentication
         await FirestoreService.updateDoctor(widget.doctorId!, doctorData);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -250,9 +262,6 @@ class _DoctorManagementState extends State<DoctorManagement> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error saving doctor: $e')),
         );
-      }
-    } finally {
-      if (mounted) {
         setState(() {
           _isLoading = false;
         });
@@ -445,6 +454,226 @@ class _DoctorManagementState extends State<DoctorManagement> {
         );
       }
     }
+  }
+  
+  // Add a new method for schedule editing
+  Future<void> _editSchedule() async {
+    // Show a dialog with schedule editing form
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        // Create temporary schedule data that can be modified
+        List<Map<String, dynamic>> tempSchedule = List.from(_scheduleList);
+        
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Edit Doctor Schedule'),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: ListView.builder(
+                  itemCount: tempSchedule.length,
+                  itemBuilder: (context, index) {
+                    final schedule = tempSchedule[index];
+                    
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              schedule['Day'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    decoration: const InputDecoration(
+                                      labelText: 'Status',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    value: schedule['Status'],
+                                    items: ['Available', 'Limited', 'Unavailable']
+                                        .map((status) => DropdownMenuItem(
+                                              value: status,
+                                              child: Text(status),
+                                            ))
+                                        .toList(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        schedule['Status'] = value;
+                                        
+                                        // Update time fields based on status
+                                        if (value == 'Unavailable') {
+                                          schedule['StartTime'] = 'N/A';
+                                          schedule['EndTime'] = 'N/A';
+                                        } else if (value == 'Available' && schedule['StartTime'] == 'N/A') {
+                                          schedule['StartTime'] = '09:00 AM';
+                                          schedule['EndTime'] = '05:00 PM';
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            if (schedule['Status'] != 'Unavailable')
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      decoration: const InputDecoration(
+                                        labelText: 'Start Time',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      initialValue: schedule['StartTime'],
+                                      onChanged: (value) {
+                                        setState(() {
+                                          schedule['StartTime'] = value;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextFormField(
+                                      decoration: const InputDecoration(
+                                        labelText: 'End Time',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      initialValue: schedule['EndTime'],
+                                      onChanged: (value) {
+                                        setState(() {
+                                          schedule['EndTime'] = value;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    // Save the updated schedule
+                    setState(() {
+                      _scheduleList = tempSchedule;
+                    });
+                    Navigator.of(context).pop();
+                    
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Schedule updated successfully')),
+                      );
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  
+  // Add a new function to show assigned patients in a dialog
+  void _viewAssignedPatients() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Assigned Patients'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 500,
+            child: _patientsList.isEmpty
+                ? const Center(child: Text('No patients assigned to this doctor'))
+                : SingleChildScrollView(
+                    child: DataTable(
+                      columns: const [
+                        DataColumn(label: Text('Name')),
+                        DataColumn(label: Text('Email')),
+                        DataColumn(label: Text('Phone')),
+                        DataColumn(label: Text('Age')),
+                        DataColumn(label: Text('Gender')),
+                        DataColumn(label: Text('Actions')),
+                      ],
+                      rows: _patientsList.map((patient) {
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(patient['Name'])),
+                            DataCell(Text(patient['Email'])),
+                            DataCell(Text(patient['Phone'])),
+                            DataCell(Text(patient['Age'])),
+                            DataCell(Text(patient['Gender'])),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_red_eye),
+                                    tooltip: 'View Patient',
+                                    onPressed: () {
+                                      Navigator.pop(context); // Close the dialog
+                                      Navigator.pushNamed(
+                                        context, 
+                                        '/admin/patients/view/${patient['id']}',
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.person_remove),
+                                    tooltip: 'Remove Assignment',
+                                    onPressed: () {
+                                      Navigator.pop(context); // Close the dialog
+                                      _removePatientAssignment(patient);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _assignPatient();
+              },
+              child: const Text('Assign New Patient'),
+            ),
+          ],
+        );
+      },
+    );
   }
   
   @override
@@ -652,26 +881,6 @@ class _DoctorManagementState extends State<DoctorManagement> {
         ),
         const SizedBox(height: 16),
         _buildScheduleTable(),
-        const SizedBox(height: 24),
-        const Text(
-          'Assigned Patients',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildPatientsTable(),
-        const SizedBox(height: 24),
-        const Text(
-          'Upcoming Appointments',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildAppointmentsTable(),
       ],
     );
   }
@@ -739,16 +948,96 @@ class _DoctorManagementState extends State<DoctorManagement> {
                 ListTile(
                   leading: const Icon(Icons.calendar_today),
                   title: const Text('Edit Schedule'),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Schedule editing will be available soon')),
-                    );
-                  },
+                  onTap: _editSchedule,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.people),
+                  title: const Text('View Assigned Patients'),
+                  onTap: _viewAssignedPatients,
                 ),
                 ListTile(
                   leading: const Icon(Icons.person_add),
                   title: const Text('Assign Patient'),
                   onTap: _assignPatient,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.add_circle),
+                  title: const Text('Create Test Appointments'),
+                  textColor: Colors.orange,
+                  iconColor: Colors.orange,
+                  onTap: () async {
+                    // Show a dialog to select a patient for the appointments
+                    final patients = await FirestoreService.getAllPatients();
+                    if (patients.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No patients found')),
+                      );
+                      return;
+                    }
+                    
+                    if (context.mounted) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Select a Patient for Test Appointments'),
+                          content: SizedBox(
+                            width: double.maxFinite,
+                            height: 300,
+                            child: ListView.builder(
+                              itemCount: patients.length,
+                              itemBuilder: (context, index) {
+                                final patient = patients[index];
+                                return ListTile(
+                                  title: Text(patient.name),
+                                  subtitle: Text(patient.email),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    
+                                    // Show loading indicator
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (context) => const Center(child: CircularProgressIndicator()),
+                                    );
+                                    
+                                    try {
+                                      // Create sample appointments
+                                      await FirestoreService.createSampleAppointments(widget.doctorId!, patient.id);
+                                      
+                                      if (context.mounted) {
+                                        // Hide loading indicator
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Sample appointments created with ${patient.name}')),
+                                        );
+                                        
+                                        // Reload doctor data
+                                        _loadDoctorData();
+                                      }
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        // Hide loading indicator
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error creating appointments: $e')),
+                                        );
+                                      }
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
                 ),
               ],
             ),
@@ -847,152 +1136,6 @@ class _DoctorManagementState extends State<DoctorManagement> {
     );
   }
   
-  Widget _buildPatientsTable() {
-    if (_patientsList.isEmpty) {
-      return const Card(
-        elevation: 2,
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(
-            child: Text('No patients assigned to this doctor'),
-          ),
-        ),
-      );
-    }
-    
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Name')),
-              DataColumn(label: Text('Email')),
-              DataColumn(label: Text('Phone')),
-              DataColumn(label: Text('Age')),
-              DataColumn(label: Text('Gender')),
-              DataColumn(label: Text('Actions')),
-            ],
-            rows: _patientsList.map((patient) {
-              return DataRow(
-                cells: [
-                  DataCell(Text(patient['Name'])),
-                  DataCell(Text(patient['Email'])),
-                  DataCell(Text(patient['Phone'])),
-                  DataCell(Text(patient['Age'])),
-                  DataCell(Text(patient['Gender'])),
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove_red_eye),
-                          tooltip: 'View Patient',
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context, 
-                              '/admin/patients/view/${patient['id']}',
-                            );
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.person_remove),
-                          tooltip: 'Remove Assignment',
-                          onPressed: () {
-                            _removePatientAssignment(patient);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildAppointmentsTable() {
-    if (_appointmentsList.isEmpty) {
-      return const Card(
-        elevation: 2,
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(
-            child: Text('No upcoming appointments'),
-          ),
-        ),
-      );
-    }
-    
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Patient')),
-              DataColumn(label: Text('Date')),
-              DataColumn(label: Text('Time')),
-              DataColumn(label: Text('Type')),
-              DataColumn(label: Text('Status')),
-              DataColumn(label: Text('Actions')),
-            ],
-            rows: _appointmentsList.map((appointment) {
-              return DataRow(
-                cells: [
-                  DataCell(Text(appointment['Patient'])),
-                  DataCell(Text(appointment['Date'].toString())),
-                  DataCell(Text(appointment['Time'])),
-                  DataCell(Text(appointment['Type'])),
-                  DataCell(
-                    Chip(
-                      label: Text(
-                        appointment['Status'],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
-                      ),
-                      backgroundColor: appointment['Status'] == 'SCHEDULED'
-                          ? Colors.blue
-                          : appointment['Status'] == 'COMPLETED'
-                              ? Colors.green
-                              : Colors.orange,
-                    ),
-                  ),
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove_red_eye),
-                          tooltip: 'View Appointment',
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context, 
-                              '/admin/appointments/view/${appointment['id']}',
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-  
   Widget _buildForm() {
     return Form(
       key: _formKey,
@@ -1046,6 +1189,26 @@ class _DoctorManagementState extends State<DoctorManagement> {
                       return null;
                     },
                   ),
+                  const SizedBox(height: 16),
+                  if (widget.action == 'add') 
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(),
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a password';
+                        }
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters long';
+                        }
+                        return null;
+                      },
+                    ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _phoneController,

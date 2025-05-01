@@ -5,6 +5,7 @@ import 'package:e_hospital/core/widgets/dashboard_card.dart';
 import 'package:e_hospital/core/widgets/data_table_widget.dart';
 import 'package:e_hospital/theme/app_theme.dart';
 import 'package:e_hospital/services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AdminDashboard extends StatefulWidget {
   final String? initialTab;
@@ -249,7 +250,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           columns: ['Name', 'Email', 'Specialization', 'Patients'],
           rows: _doctorsList,
           onRowTap: (row) {
-            Navigator.pushNamed(context, '/admin/doctors/view/${row['id']}');
+            _showDoctorOptions(context, row);
           },
           onEdit: (row) {
             Navigator.pushNamed(context, '/admin/doctors/edit/${row['id']}');
@@ -291,7 +292,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           columns: ['Name', 'Email', 'Phone', 'Condition'],
           rows: _patientsList,
           onRowTap: (row) {
-            Navigator.pushNamed(context, '/admin/patients/view/${row['id']}');
+            _showPatientOptions(context, row);
           },
           onEdit: (row) {
             Navigator.pushNamed(context, '/admin/patients/edit/${row['id']}');
@@ -553,7 +554,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           columns: ['Name', 'Email', 'Specialization', 'Patients'],
           rows: _doctorsList,
           onRowTap: (row) {
-            Navigator.pushNamed(context, '/admin/doctors/view/${row['id']}');
+            _showDoctorOptions(context, row);
           },
           maxHeight: 300,
         ),
@@ -579,11 +580,407 @@ class _AdminDashboardState extends State<AdminDashboard> {
           columns: ['Name', 'Email', 'Phone', 'Condition'],
           rows: _patientsList,
           onRowTap: (row) {
-            Navigator.pushNamed(context, '/admin/patients/view/${row['id']}');
+            _showPatientOptions(context, row);
           },
           maxHeight: 300,
         ),
       ],
     );
+  }
+
+  void _showDoctorOptions(BuildContext context, Map<String, dynamic> doctor) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Doctor: ${doctor['Name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('View Doctor Details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin/doctors/view/${doctor['id']}');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_today),
+                title: const Text('View Appointments'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToDoctorAppointments(doctor);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Edit Doctor'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin/doctors/edit/${doctor['id']}');
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showPatientOptions(BuildContext context, Map<String, dynamic> patient) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Patient: ${patient['Name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('View Patient Details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin/patients/view/${patient['id']}');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_today),
+                title: const Text('View Appointments'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToPatientAppointments(patient);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Edit Patient'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin/patients/edit/${patient['id']}');
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _navigateToDoctorAppointments(Map<String, dynamic> doctor) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+      
+      // Get doctor's appointments with debug logging
+      debugPrint('\n');
+      debugPrint('======== DEBUGGING DOCTOR APPOINTMENTS ========');
+      debugPrint('Doctor ID: ${doctor['id']}');
+      debugPrint('Doctor Name: ${doctor['Name']}');
+      
+      // First check if there are any appointments in the collection at all
+      try {
+        final allAppointments = await FirebaseFirestore.instance.collection('appointments').get();
+        debugPrint('Total appointments in Firestore: ${allAppointments.docs.length}');
+        
+        // Print raw data for each appointment
+        for (final doc in allAppointments.docs) {
+          debugPrint('Found appointment: ${doc.id}');
+          final data = doc.data();
+          debugPrint('Data: $data');
+          
+          // Check if this appointment is for our doctor
+          if (data['doctorId'] == doctor['id']) {
+            debugPrint('THIS APPOINTMENT MATCHES OUR DOCTOR!');
+          }
+        }
+      } catch (e) {
+        debugPrint('Error checking all appointments: $e');
+      }
+      
+      // Now try the query that should be finding appointments for this doctor
+      debugPrint('\nTrying specific doctor query:');
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('appointments')
+            .where('doctorId', isEqualTo: doctor['id'])
+            .get();
+        
+        debugPrint('Doctor-specific query returned ${querySnapshot.docs.length} appointments');
+        for (final doc in querySnapshot.docs) {
+          debugPrint('Appointment ID: ${doc.id}, Data: ${doc.data()}');
+        }
+      } catch (e) {
+        debugPrint('Error with doctor-specific query: $e');
+      }
+      
+      // Original query
+      debugPrint('\nUsing original service method:');
+      final appointments = await FirestoreService.getDoctorAppointments(doctor['id']);
+      debugPrint('Retrieved ${appointments.length} appointments for doctor ${doctor['Name']}');
+      
+      // For debugging, print details about each appointment
+      for (var appointment in appointments) {
+        debugPrint('Appointment ID: ${appointment.id}, Patient: ${appointment.patientName}, ' +
+                  'Date: ${appointment.appointmentDate}, Status: ${appointment.status}');
+      }
+      debugPrint('======== END DEBUG ========\n');
+      
+      if (context.mounted) {
+        // Hide loading indicator
+        Navigator.pop(context);
+        
+        // Show appointments
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Appointments for Dr. ${doctor['Name']}'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: appointments.isEmpty
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('No appointments found for this doctor.'),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            // Show loading indicator
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) => const Center(child: CircularProgressIndicator()),
+                            );
+                            
+                            try {
+                              // Get all patients to select one for test appointment
+                              final patients = await FirestoreService.getAllPatients();
+                              
+                              if (patients.isEmpty) {
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('No patients found')),
+                                  );
+                                }
+                                return;
+                              }
+                              
+                              // Use the first patient for a direct test
+                              final patientId = patients.first.id;
+                              
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                
+                                // Create direct test appointment
+                                await FirestoreService.addDirectTestAppointment(doctor['id'], patientId);
+                                
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Created test appointment')),
+                                );
+                                
+                                // Try viewing appointments again
+                                _navigateToDoctorAppointments(doctor);
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            }
+                          },
+                          child: const Text('Create Test Appointment'),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      itemCount: appointments.length,
+                      itemBuilder: (context, index) {
+                        final appointment = appointments[index];
+                        // Format date properly
+                        final formattedDate = appointment.appointmentDate != null
+                            ? '${appointment.appointmentDate.year}-${appointment.appointmentDate.month}-${appointment.appointmentDate.day}'
+                            : 'No date';
+                        return ListTile(
+                          title: Text(appointment.patientName),
+                          subtitle: Text('$formattedDate, ${appointment.time}'),
+                          trailing: Chip(
+                            label: Text(
+                              appointment.status.toString().split('.').last,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                            backgroundColor: _getAppointmentStatusColor(appointment.status.toString()),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.pushNamed(
+                              context, 
+                              '/admin/appointments/view/${appointment.id}',
+                            );
+                          },
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Navigate to add appointment form with doctor pre-selected
+                  Navigator.pushNamed(
+                    context, 
+                    '/admin/appointments/add',
+                    arguments: {'doctorId': doctor['id']},
+                  );
+                },
+                child: const Text('Add Appointment'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error getting doctor appointments: $e');
+      if (context.mounted) {
+        Navigator.pop(context); // Hide loading indicator
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error getting appointments: $e')),
+        );
+      }
+    }
+  }
+
+  void _navigateToPatientAppointments(Map<String, dynamic> patient) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+      
+      // Get patient's appointments with debug logging
+      debugPrint('Fetching appointments for patient with ID: ${patient['id']}');
+      final appointments = await FirestoreService.getPatientAppointments(patient['id']);
+      debugPrint('Retrieved ${appointments.length} appointments for patient ${patient['Name']}');
+      
+      // For debugging, print details about each appointment
+      for (var appointment in appointments) {
+        debugPrint('Appointment ID: ${appointment.id}, Doctor: ${appointment.doctorName}, Date: ${appointment.appointmentDate}, Status: ${appointment.status}');
+      }
+      
+      if (context.mounted) {
+        // Hide loading indicator
+        Navigator.pop(context);
+        
+        // Show appointments
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Appointments for ${patient['Name']}'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: appointments.isEmpty
+                  ? const Center(child: Text('No appointments found'))
+                  : ListView.builder(
+                      itemCount: appointments.length,
+                      itemBuilder: (context, index) {
+                        final appointment = appointments[index];
+                        // Format date properly
+                        final formattedDate = appointment.appointmentDate != null
+                            ? '${appointment.appointmentDate.year}-${appointment.appointmentDate.month}-${appointment.appointmentDate.day}'
+                            : 'No date';
+                        return ListTile(
+                          title: Text('Dr. ${appointment.doctorName}'),
+                          subtitle: Text('$formattedDate, ${appointment.time}'),
+                          trailing: Chip(
+                            label: Text(
+                              appointment.status.toString().split('.').last,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                            backgroundColor: _getAppointmentStatusColor(appointment.status.toString()),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.pushNamed(
+                              context, 
+                              '/admin/appointments/view/${appointment.id}',
+                            );
+                          },
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Navigate to add appointment form with patient pre-selected
+                  Navigator.pushNamed(
+                    context, 
+                    '/admin/appointments/add',
+                    arguments: {'patientId': patient['id']},
+                  );
+                },
+                child: const Text('Add Appointment'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error getting patient appointments: $e');
+      if (context.mounted) {
+        Navigator.pop(context); // Hide loading indicator
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error getting appointments: $e')),
+        );
+      }
+    }
+  }
+
+  Color _getAppointmentStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'SCHEDULED':
+        return Colors.blue;
+      case 'COMPLETED':
+        return Colors.green;
+      case 'CANCELLED':
+        return Colors.red;
+      case 'PENDING':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
   }
 }

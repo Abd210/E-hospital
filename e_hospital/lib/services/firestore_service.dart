@@ -226,26 +226,82 @@ class FirestoreService {
   /// Get patients assigned to a doctor
   static Future<List<Patient>> getDoctorPatients(String doctorId) async {
     try {
+      debugPrint('Getting patients for doctor with ID: $doctorId');
+      
       // First get the doctor to access their assigned patients
       final doctorDoc = await _usersCollection.doc(doctorId).get();
-      if (!doctorDoc.exists) return [];
+      if (!doctorDoc.exists) {
+        debugPrint('Doctor document does not exist');
+        return [];
+      }
       
-      final doctor = Doctor.fromFirestore(doctorDoc as DocumentSnapshot<Map<String, dynamic>>);
-      final assignedPatientIds = doctor.assignedPatientIds;
+      // Get the raw data first
+      final doctorData = doctorDoc.data() as Map<String, dynamic>?;
+      debugPrint('Doctor data: $doctorData');
       
-      if (assignedPatientIds.isEmpty) return [];
+      // Try multiple ways to find assigned patient IDs
+      List<String> assignedPatientIds = [];
+      
+      // 1. Try direct field
+      if (doctorData != null && doctorData.containsKey('assignedPatientIds')) {
+        final ids = doctorData['assignedPatientIds'];
+        debugPrint('Found assignedPatientIds directly in document: $ids');
+        if (ids is List) {
+          assignedPatientIds = List<String>.from(ids);
+        }
+      }
+      
+      // 2. If not found directly, try in profile field
+      if (assignedPatientIds.isEmpty && doctorData != null && 
+          doctorData.containsKey('profile') && 
+          doctorData['profile'] is Map) {
+        final profile = doctorData['profile'] as Map<String, dynamic>;
+        if (profile.containsKey('assignedPatientIds')) {
+          final ids = profile['assignedPatientIds'];
+          debugPrint('Found assignedPatientIds in profile: $ids');
+          if (ids is List) {
+            assignedPatientIds = List<String>.from(ids);
+          }
+        }
+      }
+      
+      // 3. If still not found, try using model
+      if (assignedPatientIds.isEmpty) {
+        final doctor = Doctor.fromFirestore(doctorDoc as DocumentSnapshot<Map<String, dynamic>>);
+        assignedPatientIds = doctor.assignedPatientIds;
+        debugPrint('Found assignedPatientIds through model: $assignedPatientIds');
+      }
+      
+      if (assignedPatientIds.isEmpty) {
+        debugPrint('No assigned patients found for doctor');
+        return [];
+      }
+      
+      debugPrint('Found ${assignedPatientIds.length} assigned patient IDs: $assignedPatientIds');
       
       // Get all assigned patients
       final patients = <Patient>[];
       for (final patientId in assignedPatientIds) {
-        final patientDoc = await _usersCollection.doc(patientId).get();
-        if (patientDoc.exists) {
-          final user = User.fromFirestore(patientDoc as DocumentSnapshot<Map<String, dynamic>>);
-          if (user.role == UserRole.patient) {
-            patients.add(Patient.fromUser(user));
+        try {
+          final patientDoc = await _usersCollection.doc(patientId).get();
+          if (patientDoc.exists) {
+            final userData = patientDoc.data() as Map<String, dynamic>?;
+            if (userData != null && (userData['role'] == 'patient' || userData['role'] == UserRole.patient.toString())) {
+              final user = User.fromFirestore(patientDoc as DocumentSnapshot<Map<String, dynamic>>);
+              patients.add(Patient.fromUser(user));
+              debugPrint('Added patient: ${user.name} (${user.id})');
+            } else {
+              debugPrint('Skipping non-patient user: $patientId, role: ${userData?['role']}');
+            }
+          } else {
+            debugPrint('Patient document does not exist: $patientId');
           }
+        } catch (e) {
+          debugPrint('Error getting patient $patientId: $e');
         }
       }
+      
+      debugPrint('Returning ${patients.length} patients for doctor');
       return patients;
     } catch (e) {
       debugPrint('Error getting doctor patients: $e');
@@ -366,16 +422,31 @@ class FirestoreService {
   /// Get appointments for a patient
   static Future<List<Appointment>> getPatientAppointments(String patientId) async {
     try {
+      debugPrint('Getting appointments for patient with ID: $patientId');
+      
+      // Use a more explicit query to ensure we're getting all appointments
       final querySnapshot = await _appointmentsCollection
           .where('patientId', isEqualTo: patientId)
-          .orderBy('appointmentDate', descending: true)
           .get();
       
-      return querySnapshot.docs
-          .map((doc) => Appointment.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>))
-          .toList();
+      debugPrint('Found ${querySnapshot.docs.length} appointment documents in Firestore');
+      
+      // Convert snapshots to appointment models with explicit error handling
+      final appointments = <Appointment>[];
+      for (final doc in querySnapshot.docs) {
+        try {
+          final appointment = Appointment.fromFirestore(doc);
+          appointments.add(appointment);
+        } catch (e) {
+          debugPrint('Error parsing appointment doc ${doc.id}: $e');
+        }
+      }
+      
+      debugPrint('Successfully parsed ${appointments.length} appointments');
+      return appointments;
     } catch (e) {
       debugPrint('Error getting patient appointments: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -383,16 +454,31 @@ class FirestoreService {
   /// Get appointments for a doctor
   static Future<List<Appointment>> getDoctorAppointments(String doctorId) async {
     try {
+      debugPrint('Getting appointments for doctor with ID: $doctorId');
+      
+      // Use a more explicit query to ensure we're getting all appointments
       final querySnapshot = await _appointmentsCollection
           .where('doctorId', isEqualTo: doctorId)
-          .orderBy('appointmentDate', descending: true)
           .get();
       
-      return querySnapshot.docs
-          .map((doc) => Appointment.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>))
-          .toList();
+      debugPrint('Found ${querySnapshot.docs.length} appointment documents in Firestore');
+      
+      // Convert snapshots to appointment models with explicit error handling
+      final appointments = <Appointment>[];
+      for (final doc in querySnapshot.docs) {
+        try {
+          final appointment = Appointment.fromFirestore(doc);
+          appointments.add(appointment);
+        } catch (e) {
+          debugPrint('Error parsing appointment doc ${doc.id}: $e');
+        }
+      }
+      
+      debugPrint('Successfully parsed ${appointments.length} appointments');
+      return appointments;
     } catch (e) {
       debugPrint('Error getting doctor appointments: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -419,17 +505,18 @@ class FirestoreService {
   /// Get upcoming appointments for a doctor
   static Future<List<Appointment>> getDoctorUpcomingAppointments(String doctorId) async {
     try {
-      final now = DateTime.now();
+      // Use a simpler query without requiring composite index
       final querySnapshot = await _appointmentsCollection
           .where('doctorId', isEqualTo: doctorId)
-          .where('appointmentDate', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
-          .orderBy('appointmentDate')
-          .limit(10)
           .get();
       
+      final now = DateTime.now();
+      // Filter locally instead of in the query
       return querySnapshot.docs
           .map((doc) => Appointment.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>))
-          .toList();
+          .where((appointment) => appointment.appointmentDate.isAfter(now))
+          .toList()
+          ..sort((a, b) => a.appointmentDate.compareTo(b.appointmentDate));
     } catch (e) {
       debugPrint('Error getting doctor upcoming appointments: $e');
       return [];
@@ -457,21 +544,35 @@ class FirestoreService {
   /// Create a new appointment
   static Future<Appointment?> createAppointment(Appointment appointment) async {
     try {
+      debugPrint('Creating appointment: ${appointment.id} for patient ${appointment.patientName} with doctor ${appointment.doctorName}');
+      
       final appointmentWithId = appointment.id.isEmpty
           ? appointment.copyWith(id: _uuid.v4())
           : appointment;
       
       final docRef = _appointmentsCollection.doc(appointmentWithId.id);
       
-      await docRef.set(appointmentWithId.toFirestore()..addAll({
+      // Create the Firestore data
+      final firestoreData = appointmentWithId.toFirestore();
+      debugPrint('Appointment data to be saved: $firestoreData');
+      
+      await docRef.set(firestoreData..addAll({
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }));
       
+      // Verify if the appointment was created
       final doc = await docRef.get();
+      if (!doc.exists) {
+        debugPrint('Error: Appointment was not saved properly');
+        return null;
+      }
+      
+      debugPrint('Appointment created successfully');
       return Appointment.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
     } catch (e) {
       debugPrint('Error creating appointment: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       return null;
     }
   }
@@ -889,56 +990,55 @@ class FirestoreService {
       
       final assignedPatientIds = List<String>.from(doctorData['assignedPatientIds'] ?? []);
       
-      // Get upcoming appointments
-      final now = DateTime.now();
-      
-      // Use null-safe approach
+      // Get appointments with a simpler query
       try {
         final appointmentsSnapshot = await _appointmentsCollection
             .where('doctorId', isEqualTo: doctorId)
-            .where('appointmentDate', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
-            .orderBy('appointmentDate')
-            .limit(10)
             .get();
         
-        final upcomingAppointments = appointmentsSnapshot.docs
+        final allAppointments = appointmentsSnapshot.docs
             .map((doc) => {
                   'id': doc.id,
                   ...(doc.data() as Map<String, dynamic>),
                 })
             .toList();
         
-        // Get today's appointments
+        // Filter upcoming appointments in memory
+        final now = DateTime.now();
+        final upcomingAppointments = allAppointments
+            .where((appointment) {
+              final appointmentDate = (appointment['appointmentDate'] as Timestamp?)?.toDate();
+              return appointmentDate != null && appointmentDate.isAfter(now);
+            })
+            .toList()
+            ..sort((a, b) {
+              final dateA = (a['appointmentDate'] as Timestamp).toDate();
+              final dateB = (b['appointmentDate'] as Timestamp).toDate();
+              return dateA.compareTo(dateB);
+            });
+        
+        // Take only first 10 appointments after sorting
+        final limitedUpcomingAppointments = upcomingAppointments.take(10).toList();
+        
+        // Get today's appointments by filtering in memory
         final today = DateTime(now.year, now.month, now.day);
         final tomorrow = today.add(Duration(days: 1));
         
-        final todayAppointmentsSnapshot = await _appointmentsCollection
-            .where('doctorId', isEqualTo: doctorId)
-            .where('appointmentDate', isGreaterThanOrEqualTo: Timestamp.fromDate(today))
-            .where('appointmentDate', isLessThan: Timestamp.fromDate(tomorrow))
-            .get();
-        
-        final todayAppointments = todayAppointmentsSnapshot.docs
-            .map((doc) => {
-                  'id': doc.id,
-                  ...(doc.data() as Map<String, dynamic>),
-                })
+        final todayAppointments = allAppointments
+            .where((appointment) {
+              final appointmentDate = (appointment['appointmentDate'] as Timestamp?)?.toDate();
+              return appointmentDate != null && 
+                     appointmentDate.isAfter(today) && 
+                     appointmentDate.isBefore(tomorrow);
+            })
             .toList();
-        
-        // Get appointment count safely
-        final countResult = await _appointmentsCollection
-            .where('doctorId', isEqualTo: doctorId)
-            .count()
-            .get();
-        
-        final appointmentCount = countResult.count ?? 0;
         
         // Return dashboard data
         return {
           'patientCount': assignedPatientIds.length,
           'todayAppointments': todayAppointments,
-          'upcomingAppointments': upcomingAppointments,
-          'appointmentCount': appointmentCount,
+          'upcomingAppointments': limitedUpcomingAppointments,
+          'appointmentCount': allAppointments.length,
         };
       } catch (e) {
         debugPrint('Error getting appointments data: $e');
@@ -1024,6 +1124,52 @@ class FirestoreService {
     } catch (e) {
       debugPrint('Error getting patient dashboard data: $e');
       return {};
+    }
+  }
+  
+  /// Get appointments for a specific patient with a specific doctor
+  static Future<List<Appointment>> getPatientAppointmentsWithDoctor(String patientId, String doctorId) async {
+    try {
+      debugPrint('Querying appointments for patient $patientId with doctor $doctorId');
+      final querySnapshot = await _appointmentsCollection
+          .where('patientId', isEqualTo: patientId)
+          .where('doctorId', isEqualTo: doctorId)
+          .orderBy('appointmentDate', descending: true)
+          .get();
+      
+      debugPrint('Found ${querySnapshot.docs.length} appointment documents for patient with doctor');
+      
+      // Print raw data for debugging
+      for (var doc in querySnapshot.docs) {
+        debugPrint('Appointment document ID: ${doc.id}');
+        final data = doc.data() as Map<String, dynamic>;
+        debugPrint('Raw data: ${data.toString()}');
+      }
+      
+      return querySnapshot.docs
+          .map((doc) {
+            try {
+              return Appointment.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
+            } catch (e) {
+              debugPrint('Error parsing appointment document ${doc.id}: $e');
+              // Return a placeholder appointment to avoid null issues
+              return Appointment(
+                id: doc.id,
+                patientId: patientId,
+                patientName: 'Error loading patient',
+                doctorId: doctorId,
+                doctorName: 'Error loading doctor',
+                appointmentDate: DateTime.now(),
+                time: 'Unknown',
+                purpose: 'Unknown',
+              );
+            }
+          })
+          .toList();
+    } catch (e) {
+      debugPrint('Error getting patient appointments with doctor: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+      return [];
     }
   }
   
@@ -1198,6 +1344,414 @@ class FirestoreService {
       return true;
     } catch (e) {
       debugPrint('Error deleting patient: $e');
+      return false;
+    }
+  }
+  
+  /// Create sample appointments for testing
+  static Future<bool> createSampleAppointments(String doctorId, String patientId) async {
+    try {
+      debugPrint('Creating sample appointments for testing: doctor $doctorId, patient $patientId');
+      
+      // Get doctor and patient names
+      String doctorName = 'Doctor';
+      String patientName = 'Patient';
+      String doctorSpecialty = 'General';
+      
+      try {
+        final doctorDoc = await _usersCollection.doc(doctorId).get();
+        if (doctorDoc.exists) {
+          final doctorData = doctorDoc.data() as Map<String, dynamic>?;
+          doctorName = doctorData?['name'] ?? 'Doctor';
+          doctorSpecialty = (doctorData?['profile'] as Map<String, dynamic>?)?['specialization'] ?? 'General';
+        }
+        
+        final patientDoc = await _usersCollection.doc(patientId).get();
+        if (patientDoc.exists) {
+          final patientData = patientDoc.data() as Map<String, dynamic>?;
+          patientName = patientData?['name'] ?? 'Patient';
+        }
+      } catch (e) {
+        debugPrint('Error getting doctor/patient details: $e');
+      }
+      
+      // Create a few sample appointments
+      final now = DateTime.now();
+      
+      // Past appointment
+      final pastAppointment = Appointment(
+        id: _uuid.v4(),
+        patientId: patientId,
+        patientName: patientName,
+        doctorId: doctorId,
+        doctorName: 'Dr. $doctorName',
+        doctorSpecialty: doctorSpecialty,
+        appointmentDate: DateTime(now.year, now.month, now.day - 7),
+        time: '10:00 AM',
+        purpose: 'Regular checkup',
+        status: AppointmentStatus.completed,
+        type: AppointmentType.checkup,
+        notes: 'Patient reported feeling better',
+      );
+      
+      // Today's appointment
+      final todayAppointment = Appointment(
+        id: _uuid.v4(),
+        patientId: patientId,
+        patientName: patientName,
+        doctorId: doctorId,
+        doctorName: 'Dr. $doctorName',
+        doctorSpecialty: doctorSpecialty,
+        appointmentDate: DateTime(now.year, now.month, now.day),
+        time: '2:30 PM',
+        purpose: 'Follow-up consultation',
+        status: AppointmentStatus.scheduled,
+        type: AppointmentType.followUp,
+      );
+      
+      // Future appointment
+      final futureAppointment = Appointment(
+        id: _uuid.v4(),
+        patientId: patientId,
+        patientName: patientName,
+        doctorId: doctorId,
+        doctorName: 'Dr. $doctorName',
+        doctorSpecialty: doctorSpecialty,
+        appointmentDate: DateTime(now.year, now.month, now.day + 14),
+        time: '11:15 AM',
+        purpose: 'Vaccination',
+        status: AppointmentStatus.scheduled,
+        type: AppointmentType.vaccination,
+      );
+      
+      // Save appointments to Firestore
+      await createAppointment(pastAppointment);
+      await createAppointment(todayAppointment);
+      await createAppointment(futureAppointment);
+      
+      debugPrint('Successfully created 3 sample appointments');
+      return true;
+    } catch (e) {
+      debugPrint('Error creating sample appointments: $e');
+      return false;
+    }
+  }
+  
+  /// Add a test appointment directly (bypassing the model)
+  static Future<bool> addDirectTestAppointment(String doctorId, String patientId) async {
+    try {
+      debugPrint('Creating a direct test appointment with doctor: $doctorId and patient: $patientId');
+      
+      // Get names
+      String doctorName = 'Doctor';
+      String patientName = 'Patient';
+      
+      try {
+        final doctorDoc = await _usersCollection.doc(doctorId).get();
+        if (doctorDoc.exists) {
+          doctorName = (doctorDoc.data() as Map<String, dynamic>)['name'] ?? 'Doctor';
+        }
+        
+        final patientDoc = await _usersCollection.doc(patientId).get();
+        if (patientDoc.exists) {
+          patientName = (patientDoc.data() as Map<String, dynamic>)['name'] ?? 'Patient';
+        }
+      } catch (e) {
+        debugPrint('Error getting names: $e');
+      }
+      
+      // Create appointment document ID
+      final appointmentId = _uuid.v4();
+      debugPrint('Using appointment ID: $appointmentId');
+      
+      // Get reference
+      final appointmentRef = _appointmentsCollection.doc(appointmentId);
+      
+      // Create data directly as a Map
+      final now = DateTime.now();
+      final appointmentData = {
+        'id': appointmentId,
+        'patientId': patientId,
+        'patientName': patientName,
+        'doctorId': doctorId,
+        'doctorName': doctorName,
+        'appointmentDate': Timestamp.fromDate(now.add(Duration(days: 1))),
+        'time': '10:00 AM',
+        'purpose': 'Test appointment',
+        'status': 'scheduled',
+        'type': 'checkup',
+        'notes': 'This is a test appointment created directly',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      
+      // Save to Firestore
+      await appointmentRef.set(appointmentData);
+      
+      // Verify it was created
+      final doc = await appointmentRef.get();
+      if (doc.exists) {
+        debugPrint('Direct test appointment created successfully: ${doc.data()}');
+        return true;
+      } else {
+        debugPrint('Failed to verify appointment creation');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error creating direct test appointment: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+      return false;
+    }
+  }
+  
+  /// Create a patient with authentication (email and password)
+  static Future<Map<String, dynamic>> createPatientWithAuth(Map<String, dynamic> patientData, String password) async {
+    try {
+      debugPrint('Creating patient with authentication');
+      final email = patientData['email'] as String;
+      
+      // Create Firebase Auth user
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      
+      final uid = userCredential.user!.uid;
+      debugPrint('Created auth user with ID: $uid');
+      
+      // Use the Firebase Auth UID as the Firestore document ID
+      patientData['id'] = uid;
+      patientData['role'] = 'patient';
+      
+      // Create Firestore document
+      final docRef = _usersCollection.doc(uid);
+      await docRef.set({
+        ...patientData,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      
+      // Return success with user data
+      return {
+        'success': true,
+        'userId': uid,
+        'message': 'Patient created successfully'
+      };
+    } catch (e) {
+      debugPrint('Error creating patient with auth: $e');
+      return {
+        'success': false,
+        'message': 'Error creating patient: $e'
+      };
+    }
+  }
+  
+  /// Create a doctor with authentication (email and password)
+  static Future<Map<String, dynamic>> createDoctorWithAuth(Map<String, dynamic> doctorData, String password) async {
+    try {
+      debugPrint('Creating doctor with authentication');
+      final email = doctorData['email'] as String;
+      
+      // Create Firebase Auth user
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      
+      final uid = userCredential.user!.uid;
+      debugPrint('Created auth user with ID: $uid');
+      
+      // Use the Firebase Auth UID as the Firestore document ID
+      doctorData['id'] = uid;
+      doctorData['role'] = 'medicalPersonnel';
+      
+      // Create Firestore document
+      final docRef = _usersCollection.doc(uid);
+      await docRef.set({
+        ...doctorData,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      
+      // Return success with user data
+      return {
+        'success': true,
+        'userId': uid,
+        'message': 'Doctor created successfully'
+      };
+    } catch (e) {
+      debugPrint('Error creating doctor with auth: $e');
+      return {
+        'success': false,
+        'message': 'Error creating doctor: $e'
+      };
+    }
+  }
+  
+  /// Update a diagnostic in a patient's clinical file
+  static Future<bool> updateDiagnostic(String patientId, Diagnostic diagnostic) async {
+    try {
+      // Get the clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) return false;
+      
+      // Find the index of the diagnostic to update
+      final index = clinicalFile.diagnostics.indexWhere((d) => d.id == diagnostic.id);
+      if (index == -1) return false;
+      
+      // Create a new list with the updated diagnostic
+      final updatedDiagnostics = List<Diagnostic>.from(clinicalFile.diagnostics);
+      updatedDiagnostics[index] = diagnostic;
+      
+      // Update the clinical file
+      await _clinicalFilesCollection.doc(patientId).update({
+        'diagnostics': updatedDiagnostics.map((d) => d.toJson()).toList(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error updating diagnostic: $e');
+      return false;
+    }
+  }
+  
+  /// Delete a diagnostic from a patient's clinical file
+  static Future<bool> deleteDiagnostic(String patientId, String diagnosticId) async {
+    try {
+      // Get the clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) return false;
+      
+      // Find the diagnostic to delete
+      final index = clinicalFile.diagnostics.indexWhere((d) => d.id == diagnosticId);
+      if (index == -1) return false;
+      
+      // Create a new list without the diagnostic
+      final updatedDiagnostics = List<Diagnostic>.from(clinicalFile.diagnostics);
+      updatedDiagnostics.removeAt(index);
+      
+      // Update the clinical file
+      await _clinicalFilesCollection.doc(patientId).update({
+        'diagnostics': updatedDiagnostics.map((d) => d.toJson()).toList(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting diagnostic: $e');
+      return false;
+    }
+  }
+  
+  /// Update a medical note in a patient's clinical file
+  static Future<bool> updateMedicalNote(String patientId, MedicalNote note) async {
+    try {
+      // Get the clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) return false;
+      
+      // Find the index of the note to update
+      final index = clinicalFile.medicalNotes.indexWhere((n) => n.id == note.id);
+      if (index == -1) return false;
+      
+      // Create a new list with the updated note
+      final updatedNotes = List<MedicalNote>.from(clinicalFile.medicalNotes);
+      updatedNotes[index] = note;
+      
+      // Update the clinical file
+      await _clinicalFilesCollection.doc(patientId).update({
+        'medicalNotes': updatedNotes.map((n) => n.toJson()).toList(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error updating medical note: $e');
+      return false;
+    }
+  }
+  
+  /// Delete a medical note from a patient's clinical file
+  static Future<bool> deleteMedicalNote(String patientId, String noteId) async {
+    try {
+      // Get the clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) return false;
+      
+      // Find the note to delete
+      final index = clinicalFile.medicalNotes.indexWhere((n) => n.id == noteId);
+      if (index == -1) return false;
+      
+      // Create a new list without the note
+      final updatedNotes = List<MedicalNote>.from(clinicalFile.medicalNotes);
+      updatedNotes.removeAt(index);
+      
+      // Update the clinical file
+      await _clinicalFilesCollection.doc(patientId).update({
+        'medicalNotes': updatedNotes.map((n) => n.toJson()).toList(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting medical note: $e');
+      return false;
+    }
+  }
+  
+  /// Update a treatment in a patient's clinical file
+  static Future<bool> updateTreatment(String patientId, Treatment treatment) async {
+    try {
+      // Get the clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) return false;
+      
+      // Find the index of the treatment to update
+      final index = clinicalFile.treatments.indexWhere((t) => t.id == treatment.id);
+      if (index == -1) return false;
+      
+      // Create a new list with the updated treatment
+      final updatedTreatments = List<Treatment>.from(clinicalFile.treatments);
+      updatedTreatments[index] = treatment;
+      
+      // Update the clinical file
+      await _clinicalFilesCollection.doc(patientId).update({
+        'treatments': updatedTreatments.map((t) => t.toJson()).toList(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error updating treatment: $e');
+      return false;
+    }
+  }
+  
+  /// Delete a treatment from a patient's clinical file
+  static Future<bool> deleteTreatment(String patientId, String treatmentId) async {
+    try {
+      // Get the clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) return false;
+      
+      // Find the treatment to delete
+      final index = clinicalFile.treatments.indexWhere((t) => t.id == treatmentId);
+      if (index == -1) return false;
+      
+      // Create a new list without the treatment
+      final updatedTreatments = List<Treatment>.from(clinicalFile.treatments);
+      updatedTreatments.removeAt(index);
+      
+      // Update the clinical file
+      await _clinicalFilesCollection.doc(patientId).update({
+        'treatments': updatedTreatments.map((t) => t.toJson()).toList(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting treatment: $e');
       return false;
     }
   }

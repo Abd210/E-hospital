@@ -4,6 +4,8 @@ import 'package:e_hospital/screens/admin/doctor_management.dart';
 import 'package:e_hospital/screens/admin/patient_management.dart';
 import 'package:e_hospital/screens/admin/appointment_management.dart';
 import 'package:e_hospital/screens/medic_dashboard.dart';
+import 'package:e_hospital/screens/medic/medical_record_management.dart';
+import 'package:e_hospital/screens/medic/medical_records_screen.dart';
 import 'package:e_hospital/screens/login.dart';
 
 class AppRoutes {
@@ -70,6 +72,22 @@ class AppRoutes {
           ),
         );
       }
+    } else if (path.startsWith('/medic/records/view/')) {
+      final recordId = path.split('/').last;
+      return MaterialPageRoute(
+        builder: (_) => MedicalRecordManagement(
+          recordId: recordId,
+          action: 'view',
+        ),
+      );
+    } else if (path.startsWith('/medic/records/edit/')) {
+      final recordId = path.split('/').last;
+      return MaterialPageRoute(
+        builder: (_) => MedicalRecordManagement(
+          recordId: recordId,
+          action: 'edit',
+        ),
+      );
     }
     
     // Standard routes
@@ -123,13 +141,13 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'appointments'));
       
       case '/medic/records':
-        return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'records'));
-      
-      case '/medic/prescriptions':
-        return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'prescriptions'));
-      
-      case '/medic/lab-results':
-        return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'lab-results'));
+        // Use MedicDashboard with records tab (to be implemented in MedicDashboard)
+        return MaterialPageRoute(builder: (_) => const MedicalRecordsScreen());
+        
+      case '/medic/records/add':
+        return MaterialPageRoute(
+          builder: (_) => const MedicalRecordManagement(action: 'add'),
+        );
       
       case '/medic/profile':
         return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'profile'));

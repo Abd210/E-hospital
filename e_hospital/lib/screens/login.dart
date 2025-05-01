@@ -55,21 +55,43 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      // Sign in with Firebase Auth
       await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       
-      // Navigate based on user role
+      // Get user role for navigation and display a message
       if (mounted) {
         final role = await fetchRole();
+        String accountType = "Unknown";
+        String route = '/login';
+        
         if (role == 'hospitalAdmin') {
-          Navigator.pushReplacementNamed(context, '/admin');
+          accountType = "Hospital Administrator";
+          route = '/admin';
         } else if (role == 'medicalPersonnel') {
-          Navigator.pushReplacementNamed(context, '/medic');
-        } else {
-          Navigator.pushReplacementNamed(context, '/patient');
+          accountType = "Doctor";
+          route = '/medic';
+        } else if (role == 'patient') {
+          accountType = "Patient";
+          route = '/patient';
         }
+        
+        // Show a brief success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logged in successfully as $accountType'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        // Navigate to the appropriate dashboard
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, route);
+          }
+        });
       }
     } catch (e) {
       setState(() {

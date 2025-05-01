@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:flutter/foundation.dart';
 
 part 'appointment_model.freezed.dart';
 part 'appointment_model.g.dart';
@@ -61,80 +62,138 @@ class Appointment with _$Appointment {
       _$AppointmentFromJson(json);
 
   factory Appointment.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    
-    // Parse dates from Firestore Timestamps
-    final appointmentDate = data['appointmentDate'] != null
-        ? (data['appointmentDate'] as Timestamp).toDate()
-        : DateTime.now();
-    
-    final checkedInTime = data['checkedInTime'] != null
-        ? (data['checkedInTime'] as Timestamp).toDate()
-        : null;
-    
-    final checkedOutTime = data['checkedOutTime'] != null
-        ? (data['checkedOutTime'] as Timestamp).toDate()
-        : null;
-    
-    final createdAt = data['createdAt'] != null
-        ? (data['createdAt'] as Timestamp).toDate()
-        : null;
-    
-    final updatedAt = data['updatedAt'] != null
-        ? (data['updatedAt'] as Timestamp).toDate()
-        : null;
-    
-    // Parse enum values
-    AppointmentStatus status = AppointmentStatus.scheduled;
-    if (data['status'] != null) {
+    try {
+      debugPrint('Parsing appointment from Firestore doc ID: ${doc.id}');
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      debugPrint('Raw appointment data: $data');
+      
+      // Parse dates from Firestore Timestamps
+      DateTime appointmentDate;
       try {
-        status = AppointmentStatus.values.firstWhere(
-          (e) => e.toString().split('.').last == data['status'],
-          orElse: () => AppointmentStatus.scheduled,
-        );
-      } catch (_) {}
-    }
-    
-    AppointmentType type = AppointmentType.checkup;
-    if (data['type'] != null) {
+        if (data['appointmentDate'] is Timestamp) {
+          appointmentDate = (data['appointmentDate'] as Timestamp).toDate();
+          debugPrint('Parsed appointmentDate: $appointmentDate');
+        } else {
+          debugPrint('appointmentDate is not a Timestamp: ${data['appointmentDate']}');
+          appointmentDate = DateTime.now();
+        }
+      } catch (e) {
+        debugPrint('Error parsing appointment date: $e');
+        appointmentDate = DateTime.now();
+      }
+      
+      DateTime? checkedInTime;
       try {
-        type = AppointmentType.values.firstWhere(
-          (e) => e.toString().split('.').last == data['type'],
-          orElse: () => AppointmentType.checkup,
-        );
-      } catch (_) {}
-    }
+        if (data['checkedInTime'] is Timestamp) {
+          checkedInTime = (data['checkedInTime'] as Timestamp).toDate();
+        }
+      } catch (e) {
+        debugPrint('Error parsing checkedInTime: $e');
+      }
+      
+      DateTime? checkedOutTime;
+      try {
+        if (data['checkedOutTime'] is Timestamp) {
+          checkedOutTime = (data['checkedOutTime'] as Timestamp).toDate();
+        }
+      } catch (e) {
+        debugPrint('Error parsing checkedOutTime: $e');
+      }
+      
+      DateTime? createdAt;
+      try {
+        if (data['createdAt'] is Timestamp) {
+          createdAt = (data['createdAt'] as Timestamp).toDate();
+        }
+      } catch (e) {
+        debugPrint('Error parsing createdAt: $e');
+      }
+      
+      DateTime? updatedAt;
+      try {
+        if (data['updatedAt'] is Timestamp) {
+          updatedAt = (data['updatedAt'] as Timestamp).toDate();
+        }
+      } catch (e) {
+        debugPrint('Error parsing updatedAt: $e');
+      }
+      
+      // Parse enum values
+      AppointmentStatus status = AppointmentStatus.scheduled;
+      if (data['status'] != null) {
+        try {
+          status = AppointmentStatus.values.firstWhere(
+            (e) => e.toString().split('.').last.toLowerCase() == data['status'].toString().toLowerCase(),
+            orElse: () => AppointmentStatus.scheduled,
+          );
+          debugPrint('Parsed status: $status');
+        } catch (e) {
+          debugPrint('Error parsing status: $e');
+        }
+      }
+      
+      AppointmentType type = AppointmentType.checkup;
+      if (data['type'] != null) {
+        try {
+          type = AppointmentType.values.firstWhere(
+            (e) => e.toString().split('.').last.toLowerCase() == data['type'].toString().toLowerCase(),
+            orElse: () => AppointmentType.checkup,
+          );
+          debugPrint('Parsed type: $type');
+        } catch (e) {
+          debugPrint('Error parsing type: $e');
+        }
+      }
 
-    return Appointment(
-      id: doc.id,
-      patientId: data['patientId'] ?? '',
-      patientName: data['patientName'] ?? '',
-      doctorId: data['doctorId'] ?? '',
-      doctorName: data['doctorName'] ?? '',
-      appointmentDate: appointmentDate,
-      time: data['time'] ?? '',
-      purpose: data['purpose'] ?? '',
-      status: status,
-      type: type,
-      notes: data['notes'],
-      location: data['location'],
-      department: data['department'],
-      duration: data['duration'],
-      symptoms: data['symptoms'],
-      patientPhoneNumber: data['patientPhoneNumber'],
-      doctorSpecialty: data['doctorSpecialty'],
-      isVirtual: data['isVirtual'],
-      virtualMeetingLink: data['virtualMeetingLink'],
-      attachments: data['attachments'] != null 
-          ? List<String>.from(data['attachments'])
-          : null,
-      checkedInTime: checkedInTime,
-      checkedOutTime: checkedOutTime,
-      createdAt: createdAt,
-      updatedAt: updatedAt,
-      createdBy: data['createdBy'],
-      metadata: data['metadata'],
-    );
+      final appointment = Appointment(
+        id: doc.id,
+        patientId: data['patientId'] ?? '',
+        patientName: data['patientName'] ?? '',
+        doctorId: data['doctorId'] ?? '',
+        doctorName: data['doctorName'] ?? '',
+        appointmentDate: appointmentDate,
+        time: data['time'] ?? '',
+        purpose: data['purpose'] ?? '',
+        status: status,
+        type: type,
+        notes: data['notes'],
+        location: data['location'],
+        department: data['department'],
+        duration: data['duration'],
+        symptoms: data['symptoms'],
+        patientPhoneNumber: data['patientPhoneNumber'],
+        doctorSpecialty: data['doctorSpecialty'],
+        isVirtual: data['isVirtual'],
+        virtualMeetingLink: data['virtualMeetingLink'],
+        attachments: data['attachments'] != null 
+            ? List<String>.from(data['attachments'])
+            : null,
+        checkedInTime: checkedInTime,
+        checkedOutTime: checkedOutTime,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        createdBy: data['createdBy'],
+        metadata: data['metadata'],
+      );
+      
+      debugPrint('Successfully parsed appointment: ${appointment.id}');
+      return appointment;
+    } catch (e, stackTrace) {
+      debugPrint('Error in Appointment.fromFirestore: $e');
+      debugPrint('Stack trace: $stackTrace');
+      
+      // Return a minimal valid appointment to avoid crashes
+      return Appointment(
+        id: doc.id,
+        patientId: '',
+        patientName: 'Error parsing data',
+        doctorId: '',
+        doctorName: 'Error parsing data',
+        appointmentDate: DateTime.now(),
+        time: '',
+        purpose: 'Error: $e',
+      );
+    }
   }
   
   Map<String, dynamic> toFirestore() {

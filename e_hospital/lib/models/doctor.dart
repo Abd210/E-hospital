@@ -57,9 +57,18 @@ class Doctor {
   List<String> get certifications =>
       (profile?['certifications'] as List<dynamic>?)?.cast<String>() ?? [];
   
-  /// Get doctor's assigned patients
-  List<String> get assignedPatientIds =>
-      (profile?['assignedPatientIds'] as List<dynamic>?)?.cast<String>() ?? [];
+  /// Get doctor's assigned patients - get it from either the top-level 'assignedPatientIds' field
+  /// or the 'profile.assignedPatientIds' field for backward compatibility
+  List<String> get assignedPatientIds {
+    // Try to get from user.metadata first (top-level field)
+    if (user.metadata != null && user.metadata!.containsKey('assignedPatientIds')) {
+      return (user.metadata!['assignedPatientIds'] as List<dynamic>?)?.cast<String>() ?? [];
+    }
+    
+    // No direct data field in User model at this time
+    // Try to get from profile
+    return (profile?['assignedPatientIds'] as List<dynamic>?)?.cast<String>() ?? [];
+  }
   
   /// Convert to user model for updates
   User toUser() => user;

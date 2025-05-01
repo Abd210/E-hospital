@@ -84,16 +84,6 @@ class _AppSidebarState extends State<AppSidebar> {
       path: '/medic/records',
     ),
     const NavItem(
-      title: 'Prescriptions',
-      icon: Icons.medication_outlined,
-      path: '/medic/prescriptions',
-    ),
-    const NavItem(
-      title: 'Lab Results',
-      icon: Icons.biotech_outlined,
-      path: '/medic/lab-results',
-    ),
-    const NavItem(
       title: 'Profile',
       icon: Icons.person_outline,
       path: '/medic/profile',
