@@ -3,9 +3,6 @@
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
-import 'dart:core' as $core;
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 part of 'appointment_model.dart';
 
 // **************************************************************************
@@ -434,7 +431,7 @@ class __$$AppointmentImplCopyWithImpl<$Res>
 
 /// @nodoc
 @JsonSerializable()
-class _$AppointmentImpl implements _Appointment {
+class _$AppointmentImpl extends _Appointment with DiagnosticableTreeMixin {
   const _$AppointmentImpl(
       {required this.id,
       required this.patientId,
@@ -463,7 +460,8 @@ class _$AppointmentImpl implements _Appointment {
       this.createdBy,
       final Map<String, dynamic>? metadata})
       : _attachments = attachments,
-        _metadata = metadata;
+        _metadata = metadata,
+        super._();
 
   factory _$AppointmentImpl.fromJson(Map<String, dynamic> json) =>
       _$$AppointmentImplFromJson(json);
@@ -539,8 +537,41 @@ class _$AppointmentImpl implements _Appointment {
   }
 
   @override
-  String toString() {
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
     return 'Appointment(id: $id, patientId: $patientId, patientName: $patientName, doctorId: $doctorId, doctorName: $doctorName, appointmentDate: $appointmentDate, time: $time, purpose: $purpose, status: $status, type: $type, notes: $notes, location: $location, department: $department, duration: $duration, symptoms: $symptoms, patientPhoneNumber: $patientPhoneNumber, doctorSpecialty: $doctorSpecialty, isVirtual: $isVirtual, virtualMeetingLink: $virtualMeetingLink, attachments: $attachments, checkedInTime: $checkedInTime, checkedOutTime: $checkedOutTime, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy, metadata: $metadata)';
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('type', 'Appointment'))
+      ..add(DiagnosticsProperty('id', id))
+      ..add(DiagnosticsProperty('patientId', patientId))
+      ..add(DiagnosticsProperty('patientName', patientName))
+      ..add(DiagnosticsProperty('doctorId', doctorId))
+      ..add(DiagnosticsProperty('doctorName', doctorName))
+      ..add(DiagnosticsProperty('appointmentDate', appointmentDate))
+      ..add(DiagnosticsProperty('time', time))
+      ..add(DiagnosticsProperty('purpose', purpose))
+      ..add(DiagnosticsProperty('status', status))
+      ..add(DiagnosticsProperty('type', type))
+      ..add(DiagnosticsProperty('notes', notes))
+      ..add(DiagnosticsProperty('location', location))
+      ..add(DiagnosticsProperty('department', department))
+      ..add(DiagnosticsProperty('duration', duration))
+      ..add(DiagnosticsProperty('symptoms', symptoms))
+      ..add(DiagnosticsProperty('patientPhoneNumber', patientPhoneNumber))
+      ..add(DiagnosticsProperty('doctorSpecialty', doctorSpecialty))
+      ..add(DiagnosticsProperty('isVirtual', isVirtual))
+      ..add(DiagnosticsProperty('virtualMeetingLink', virtualMeetingLink))
+      ..add(DiagnosticsProperty('attachments', attachments))
+      ..add(DiagnosticsProperty('checkedInTime', checkedInTime))
+      ..add(DiagnosticsProperty('checkedOutTime', checkedOutTime))
+      ..add(DiagnosticsProperty('createdAt', createdAt))
+      ..add(DiagnosticsProperty('updatedAt', updatedAt))
+      ..add(DiagnosticsProperty('createdBy', createdBy))
+      ..add(DiagnosticsProperty('metadata', metadata));
   }
 
   @override
@@ -641,41 +672,9 @@ class _$AppointmentImpl implements _Appointment {
       this,
     );
   }
-
-  @override
-  Map<String, dynamic> toFirestore() {
-    final json = toJson();
-    
-    // Convert DateTime to Timestamp for Firestore
-    if (json['appointmentDate'] != null) {
-      json['appointmentDate'] = Timestamp.fromDate(appointmentDate);
-    }
-    
-    if (json['checkedInTime'] != null) {
-      json['checkedInTime'] = Timestamp.fromDate(checkedInTime!);
-    }
-    
-    if (json['checkedOutTime'] != null) {
-      json['checkedOutTime'] = Timestamp.fromDate(checkedOutTime!);
-    }
-    
-    if (json['createdAt'] != null) {
-      json['createdAt'] = Timestamp.fromDate(createdAt!);
-    }
-    
-    if (json['updatedAt'] != null) {
-      json['updatedAt'] = Timestamp.fromDate(updatedAt!);
-    }
-    
-    // Convert enum to string
-    json['status'] = status.toString().split('.').last;
-    json['type'] = type.toString().split('.').last;
-    
-    return json;
-  }
 }
 
-abstract class _Appointment implements Appointment {
+abstract class _Appointment extends Appointment {
   const factory _Appointment(
       {required final String id,
       required final String patientId,
@@ -703,6 +702,7 @@ abstract class _Appointment implements Appointment {
       final DateTime? updatedAt,
       final String? createdBy,
       final Map<String, dynamic>? metadata}) = _$AppointmentImpl;
+  const _Appointment._() : super._();
 
   factory _Appointment.fromJson(Map<String, dynamic> json) =
       _$AppointmentImpl.fromJson;
@@ -964,7 +964,9 @@ class __$$AppointmentSlotImplCopyWithImpl<$Res>
 
 /// @nodoc
 @JsonSerializable()
-class _$AppointmentSlotImpl implements _AppointmentSlot {
+class _$AppointmentSlotImpl
+    with DiagnosticableTreeMixin
+    implements _AppointmentSlot {
   const _$AppointmentSlotImpl(
       {required this.id,
       required this.doctorId,
@@ -1000,8 +1002,24 @@ class _$AppointmentSlotImpl implements _AppointmentSlot {
   final String? notes;
 
   @override
-  String toString() {
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
     return 'AppointmentSlot(id: $id, doctorId: $doctorId, date: $date, startTime: $startTime, endTime: $endTime, isAvailable: $isAvailable, appointmentId: $appointmentId, patientId: $patientId, notes: $notes)';
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('type', 'AppointmentSlot'))
+      ..add(DiagnosticsProperty('id', id))
+      ..add(DiagnosticsProperty('doctorId', doctorId))
+      ..add(DiagnosticsProperty('date', date))
+      ..add(DiagnosticsProperty('startTime', startTime))
+      ..add(DiagnosticsProperty('endTime', endTime))
+      ..add(DiagnosticsProperty('isAvailable', isAvailable))
+      ..add(DiagnosticsProperty('appointmentId', appointmentId))
+      ..add(DiagnosticsProperty('patientId', patientId))
+      ..add(DiagnosticsProperty('notes', notes));
   }
 
   @override

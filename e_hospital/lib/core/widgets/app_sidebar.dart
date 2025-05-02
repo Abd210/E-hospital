@@ -71,7 +71,7 @@ class _AppSidebarState extends State<AppSidebar> {
     const NavItem(
       title: 'My Patients',
       icon: Icons.people_outline,
-      path: '/medic/patients',
+      path: '/medic/my-patients',
     ),
     const NavItem(
       title: 'Appointments',
@@ -79,7 +79,7 @@ class _AppSidebarState extends State<AppSidebar> {
       path: '/medic/appointments',
     ),
     const NavItem(
-      title: 'Medical Records',
+      title: 'Clinical Files',
       icon: Icons.folder_outlined,
       path: '/medic/records',
     ),
@@ -102,29 +102,9 @@ class _AppSidebarState extends State<AppSidebar> {
       path: '/patient/appointments',
     ),
     const NavItem(
-      title: 'My Doctors',
-      icon: Icons.medical_services_outlined,
-      path: '/patient/doctors',
-    ),
-    const NavItem(
-      title: 'Medical Records',
+      title: 'Clinical File',
       icon: Icons.folder_outlined,
       path: '/patient/records',
-    ),
-    const NavItem(
-      title: 'Prescriptions',
-      icon: Icons.medication_outlined,
-      path: '/patient/prescriptions',
-    ),
-    const NavItem(
-      title: 'Lab Results',
-      icon: Icons.biotech_outlined,
-      path: '/patient/lab-results',
-    ),
-    const NavItem(
-      title: 'Profile',
-      icon: Icons.person_outline,
-      path: '/patient/profile',
     ),
   ];
   

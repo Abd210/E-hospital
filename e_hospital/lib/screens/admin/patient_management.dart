@@ -3,6 +3,7 @@ import 'package:e_hospital/core/widgets/responsive_layout.dart';
 import 'package:e_hospital/theme/app_theme.dart';
 import 'package:e_hospital/services/firestore_service.dart';
 import 'package:e_hospital/models/patient.dart';
+import 'package:e_hospital/models/clinical_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -103,19 +104,57 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           _weightController.text = (patient.profile?['weight'] ?? '').toString();
           _allergiesController.text = patient.allergies;
           _medicalConditionController.text = patient.medicalCondition;
-          
-          // Load patient's appointments
-          _loadPatientAppointments();
-          
-          // Load patient's medical records
-          _loadPatientMedicalRecords();
-          
-          // Load patient's prescriptions
-          _loadPatientPrescriptions();
-          
-          // Load patient's lab results
-          _loadPatientLabResults();
         });
+        
+        // Load clinical file data
+        final clinicalFile = await FirestoreService.getClinicalFileByPatientId(widget.patientId!);
+        if (clinicalFile != null && mounted) {
+          // Load diagnostics
+          setState(() {
+            _medicalRecordsList = clinicalFile.diagnostics.map((diagnostic) => {
+              'id': diagnostic.id,
+              'Date': diagnostic.date,
+              'Doctor': diagnostic.doctorName,
+              'Diagnosis': diagnostic.description,
+              'Notes': diagnostic.notes ?? '',
+            }).toList();
+            
+            // Load treatments
+            _prescriptionsList = clinicalFile.treatments.map((treatment) => {
+              'id': treatment.id,
+              'Date': treatment.date,
+              'Doctor': treatment.doctorName,
+              'Medication': treatment.medication,
+              'Dosage': treatment.dosage,
+              'Frequency': treatment.frequency,
+              'Duration': treatment.duration,
+            }).toList();
+            
+            // Load discharge summary
+            if (clinicalFile.dischargeSummary != null) {
+              _labResultsList = [{
+                'id': clinicalFile.dischargeSummary!.id,
+                'Date': clinicalFile.dischargeSummary!.dischargeDate,
+                'TestName': 'Discharge Summary',
+                'Result': clinicalFile.dischargeSummary!.finalDiagnosis,
+                'ReferenceRange': clinicalFile.dischargeSummary!.followUpInstructions,
+                'Notes': clinicalFile.dischargeSummary!.summary,
+              }];
+            } else {
+              _labResultsList = [];
+            }
+          });
+        } else {
+          // Create mock data if no clinical file exists yet
+          setState(() {
+            _medicalRecordsList = [];
+            _prescriptionsList = [];
+            _labResultsList = [];
+          });
+        }
+        
+        // Load patient's appointments
+        await _loadPatientAppointments();
       }
     } catch (e) {
       debugPrint('Error loading patient data: $e');
@@ -146,84 +185,6 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
       }).toList();
     } catch (e) {
       debugPrint('Error loading patient appointments: $e');
-    }
-  }
-  
-  Future<void> _loadPatientMedicalRecords() async {
-    try {
-      // Mock medical records data
-      _medicalRecordsList = [
-        {
-          'id': '1',
-          'Date': DateTime.now().subtract(const Duration(days: 30)),
-          'Doctor': 'Dr. John Smith',
-          'Diagnosis': 'Common Cold',
-          'Notes': 'Patient presented with symptoms of common cold. Prescribed rest and fluids.',
-        },
-        {
-          'id': '2',
-          'Date': DateTime.now().subtract(const Duration(days: 90)),
-          'Doctor': 'Dr. Jane Doe',
-          'Diagnosis': 'Annual Checkup',
-          'Notes': 'Regular annual checkup. All vitals normal.',
-        },
-      ];
-    } catch (e) {
-      debugPrint('Error loading patient medical records: $e');
-    }
-  }
-  
-  Future<void> _loadPatientPrescriptions() async {
-    try {
-      // Mock prescriptions data
-      _prescriptionsList = [
-        {
-          'id': '1',
-          'Date': DateTime.now().subtract(const Duration(days: 30)),
-          'Doctor': 'Dr. John Smith',
-          'Medication': 'Amoxicillin',
-          'Dosage': '500mg',
-          'Frequency': 'Twice daily',
-          'Duration': '7 days',
-        },
-        {
-          'id': '2',
-          'Date': DateTime.now().subtract(const Duration(days: 90)),
-          'Doctor': 'Dr. Jane Doe',
-          'Medication': 'Vitamin D',
-          'Dosage': '1000 IU',
-          'Frequency': 'Once daily',
-          'Duration': '30 days',
-        },
-      ];
-    } catch (e) {
-      debugPrint('Error loading patient prescriptions: $e');
-    }
-  }
-  
-  Future<void> _loadPatientLabResults() async {
-    try {
-      // Mock lab results data
-      _labResultsList = [
-        {
-          'id': '1',
-          'Date': DateTime.now().subtract(const Duration(days: 45)),
-          'TestName': 'Complete Blood Count (CBC)',
-          'Result': 'Normal',
-          'ReferenceRange': 'Within normal limits',
-          'Notes': 'All values within normal range',
-        },
-        {
-          'id': '2',
-          'Date': DateTime.now().subtract(const Duration(days: 60)),
-          'TestName': 'Blood Glucose',
-          'Result': '95 mg/dL',
-          'ReferenceRange': '70-99 mg/dL',
-          'Notes': 'Fasting blood glucose normal',
-        },
-      ];
-    } catch (e) {
-      debugPrint('Error loading patient lab results: $e');
     }
   }
   
@@ -713,7 +674,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Clinical Records',
+          'Clinical File',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -726,9 +687,9 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           unselectedLabelColor: Colors.grey,
           indicatorColor: AppColors.primary,
           tabs: const [
-            Tab(text: 'Medical Records'),
-            Tab(text: 'Prescriptions'),
-            Tab(text: 'Lab Results'),
+            Tab(text: 'Diagnostics'),
+            Tab(text: 'Treatments'),
+            Tab(text: 'Discharge Summary'),
           ],
         ),
         SizedBox(
@@ -736,9 +697,9 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildMedicalRecordsTab(),
-              _buildPrescriptionsTab(),
-              _buildLabResultsTab(),
+              _buildDiagnosticsTab(),
+              _buildTreatmentsTab(),
+              _buildDischargeSummaryTab(),
             ],
           ),
         ),
@@ -746,7 +707,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
     );
   }
   
-  Widget _buildMedicalRecordsTab() {
+  Widget _buildDiagnosticsTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -756,15 +717,15 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           children: [
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Add Medical Record'),
-              onPressed: _addMedicalRecord,
+              label: const Text('Add Diagnostic'),
+              onPressed: _addDiagnostic,
             ),
           ],
         ),
         const SizedBox(height: 16),
         Expanded(
           child: _medicalRecordsList.isEmpty
-              ? const Center(child: Text('No medical records found'))
+              ? const Center(child: Text('No diagnostics found'))
               : ListView.builder(
                   itemCount: _medicalRecordsList.length,
                   itemBuilder: (context, index) {
@@ -814,7 +775,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
     );
   }
   
-  Widget _buildPrescriptionsTab() {
+  Widget _buildTreatmentsTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -824,15 +785,15 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           children: [
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Add Prescription'),
-              onPressed: _addPrescription,
+              label: const Text('Add Treatment'),
+              onPressed: _addTreatment,
             ),
           ],
         ),
         const SizedBox(height: 16),
         Expanded(
           child: _prescriptionsList.isEmpty
-              ? const Center(child: Text('No prescriptions found'))
+              ? const Center(child: Text('No treatments found'))
               : ListView.builder(
                   itemCount: _prescriptionsList.length,
                   itemBuilder: (context, index) {
@@ -884,7 +845,7 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
     );
   }
   
-  Widget _buildLabResultsTab() {
+  Widget _buildDischargeSummaryTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -894,15 +855,15 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
           children: [
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Add Lab Result'),
-              onPressed: _addLabResult,
+              label: const Text('Add Discharge Summary'),
+              onPressed: _addDischargeSummary,
             ),
           ],
         ),
         const SizedBox(height: 16),
         Expanded(
           child: _labResultsList.isEmpty
-              ? const Center(child: Text('No lab results found'))
+              ? const Center(child: Text('No discharge summary found'))
               : ListView.builder(
                   itemCount: _labResultsList.length,
                   itemBuilder: (context, index) {
@@ -933,14 +894,14 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Result: ${labResult['Result']}',
+                              'Final Diagnosis: ${labResult['Result']}',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Text('Reference Range: ${labResult['ReferenceRange']}'),
+                            Text('Follow-up Instructions: ${labResult['ReferenceRange']}'),
                             Text('Notes: ${labResult['Notes']}'),
                           ],
                         ),
@@ -1215,5 +1176,482 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
       default:
         return Colors.grey;
     }
+  }
+  
+  void _addDiagnostic() {
+    // Implement adding a new diagnostic
+    final _descriptionController = TextEditingController();
+    final _notesController = TextEditingController();
+    final _formKey = GlobalKey<FormState>();
+    
+    DateTime _diagnosisDate = DateTime.now();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Diagnostic'),
+        content: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Diagnosis',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a diagnosis';
+                    }
+                    return null;
+                  },
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _diagnosisDate,
+                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                      lastDate: DateTime.now().add(const Duration(days: 30)),
+                    );
+                    
+                    if (pickedDate != null && context.mounted) {
+                      _diagnosisDate = pickedDate;
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Diagnosis Date',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      DateFormat('yyyy-MM-dd').format(_diagnosisDate),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_formKey.currentState!.validate()) {
+                final user = await FirestoreService.getCurrentUser();
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('User not authenticated')),
+                  );
+                  return;
+                }
+                
+                // Create diagnostic
+                final diagnostic = Diagnostic(
+                  id: '', // Will be generated by the service
+                  description: _descriptionController.text,
+                  doctorId: user.id,
+                  doctorName: user.name,
+                  date: _diagnosisDate,
+                  notes: _notesController.text,
+                );
+                
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(child: CircularProgressIndicator()),
+                );
+                
+                try {
+                  // Add diagnostic
+                  final success = await FirestoreService.addDiagnostic(
+                    widget.patientId!,
+                    diagnostic,
+                  );
+                  
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    
+                    if (success) {
+                      Navigator.pop(context); // Close form dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Diagnostic added successfully')),
+                      );
+                      
+                      // Reload patient data
+                      _loadPatientData();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to add diagnostic')),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding diagnostic: $e')),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _addTreatment() {
+    // Implement adding a new treatment
+    final _medicationController = TextEditingController();
+    final _descriptionController = TextEditingController();
+    final _dosageController = TextEditingController();
+    final _frequencyController = TextEditingController();
+    final _durationController = TextEditingController();
+    final _formKey = GlobalKey<FormState>();
+    
+    DateTime _treatmentDate = DateTime.now();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Treatment'),
+        content: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _medicationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Medication/Treatment',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a medication/treatment';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _dosageController,
+                  decoration: const InputDecoration(
+                    labelText: 'Dosage',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _frequencyController,
+                  decoration: const InputDecoration(
+                    labelText: 'Frequency',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _durationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Duration',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description/Notes',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _treatmentDate,
+                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                      lastDate: DateTime.now().add(const Duration(days: 30)),
+                    );
+                    
+                    if (pickedDate != null && context.mounted) {
+                      _treatmentDate = pickedDate;
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Treatment Date',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      DateFormat('yyyy-MM-dd').format(_treatmentDate),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_formKey.currentState!.validate()) {
+                final user = await FirestoreService.getCurrentUser();
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('User not authenticated')),
+                  );
+                  return;
+                }
+                
+                // Create treatment
+                final treatment = Treatment(
+                  id: '', // Will be generated by the service
+                  medication: _medicationController.text,
+                  description: _descriptionController.text,
+                  doctorId: user.id,
+                  doctorName: user.name,
+                  date: _treatmentDate,
+                  dosage: _dosageController.text,
+                  frequency: _frequencyController.text,
+                  duration: _durationController.text,
+                );
+                
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(child: CircularProgressIndicator()),
+                );
+                
+                try {
+                  // Add treatment
+                  final success = await FirestoreService.addTreatment(
+                    widget.patientId!,
+                    treatment,
+                  );
+                  
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    
+                    if (success) {
+                      Navigator.pop(context); // Close form dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Treatment added successfully')),
+                      );
+                      
+                      // Reload patient data
+                      _loadPatientData();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to add treatment')),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding treatment: $e')),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _addDischargeSummary() {
+    // Implement adding a new discharge summary
+    final _summaryController = TextEditingController();
+    final _finalDiagnosisController = TextEditingController();
+    final _followUpInstructionsController = TextEditingController();
+    final _formKey = GlobalKey<FormState>();
+    
+    DateTime _dischargeDate = DateTime.now();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Discharge Summary'),
+        content: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _finalDiagnosisController,
+                  decoration: const InputDecoration(
+                    labelText: 'Final Diagnosis',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a final diagnosis';
+                    }
+                    return null;
+                  },
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _summaryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Summary',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a summary';
+                    }
+                    return null;
+                  },
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _followUpInstructionsController,
+                  decoration: const InputDecoration(
+                    labelText: 'Follow-Up Instructions',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter follow-up instructions';
+                    }
+                    return null;
+                  },
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _dischargeDate,
+                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                      lastDate: DateTime.now().add(const Duration(days: 30)),
+                    );
+                    
+                    if (pickedDate != null && context.mounted) {
+                      _dischargeDate = pickedDate;
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Discharge Date',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      DateFormat('yyyy-MM-dd').format(_dischargeDate),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_formKey.currentState!.validate()) {
+                // Create discharge summary
+                final dischargeSummary = DischargeSummary(
+                  id: '', // Will be generated by the service
+                  summary: _summaryController.text,
+                  dischargeDate: _dischargeDate,
+                  finalDiagnosis: _finalDiagnosisController.text,
+                  followUpInstructions: _followUpInstructionsController.text,
+                );
+                
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(child: CircularProgressIndicator()),
+                );
+                
+                try {
+                  // Update discharge summary
+                  final success = await FirestoreService.updateDischargeSummary(
+                    widget.patientId!,
+                    dischargeSummary,
+                  );
+                  
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    
+                    if (success) {
+                      Navigator.pop(context); // Close form dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Discharge summary added successfully')),
+                      );
+                      
+                      // Reload patient data
+                      _loadPatientData();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to add discharge summary')),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding discharge summary: $e')),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 } 

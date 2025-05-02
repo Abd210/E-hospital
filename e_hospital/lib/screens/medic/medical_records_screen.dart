@@ -7,9 +7,12 @@ import 'package:e_hospital/services/firestore_service.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:e_hospital/models/clinical_model.dart';
 
 class MedicalRecordsScreen extends StatefulWidget {
-  const MedicalRecordsScreen({Key? key}) : super(key: key);
+  final String? patientId; // Optional: if provided, shows only this patient's records
+  
+  const MedicalRecordsScreen({Key? key, this.patientId}) : super(key: key);
 
   @override
   State<MedicalRecordsScreen> createState() => _MedicalRecordsScreenState();
@@ -22,10 +25,13 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   List<Map<String, dynamic>> _recordsList = [];
   List<Map<String, dynamic>> _patientsList = [];
   String? _selectedPatientId;
+  String? _filterPatientId;
+  String? _activePatientName = '';
 
   @override
   void initState() {
     super.initState();
+    _filterPatientId = widget.patientId;
     _loadData();
   }
 
@@ -38,6 +44,14 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
       // Get current user ID
       final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
       if (currentUserId == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: User not authenticated')),
+          );
+        }
         return;
       }
 
@@ -49,26 +63,55 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
           _doctorEmail = doctor.email;
         });
 
-        // Get doctor's patients
-        final patients = await FirestoreService.getDoctorPatients(currentUserId);
-        if (mounted) {
-          _patientsList = patients.map((patient) {
-            return {
-              'id': patient.id,
-              'Name': patient.name,
-              'Age': patient.age.toString(),
-              'Gender': patient.gender,
-            };
-          }).toList();
+        try {
+          // Get doctor's patients
+          final patients = await FirestoreService.getDoctorPatients(currentUserId);
+          if (mounted) {
+            _patientsList = patients.map((patient) {
+              return {
+                'id': patient.id,
+                'Name': patient.name,
+                'Age': patient.age.toString(),
+                'Gender': patient.gender,
+              };
+            }).toList();
+            
+            // If filtering by patient, set the active patient name
+            if (_filterPatientId != null) {
+              final patient = _patientsList.firstWhere(
+                (p) => p['id'] == _filterPatientId,
+                orElse: () => {'Name': 'Unknown Patient'},
+              );
+              _activePatientName = patient['Name'] as String;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error loading patients: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error loading patients: $e')),
+            );
+          }
         }
 
-        // If we have patients, load medical records
-        if (_patientsList.isNotEmpty) {
-          await _loadMedicalRecords();
+        // If we have patients or a specific patient is requested, load records
+        if (_patientsList.isNotEmpty || _filterPatientId != null) {
+          await _loadClinicalRecords();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Failed to load doctor profile')),
+          );
         }
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -78,63 +121,38 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     }
   }
 
-  Future<void> _loadMedicalRecords() async {
+  Future<void> _loadClinicalRecords() async {
     try {
       final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
       if (currentUserId == null) return;
 
       final recordsList = <Map<String, dynamic>>[];
-
-      // For each patient, get their clinical file
-      for (final patient in _patientsList) {
+      
+      // If filtering by patient, only load that patient's records
+      if (_filterPatientId != null) {
+        // Get the patient name
+        final patient = _patientsList.firstWhere(
+          (p) => p['id'] == _filterPatientId,
+          orElse: () => {'id': _filterPatientId, 'Name': 'Unknown Patient'},
+        );
+        
         final patientId = patient['id'] as String;
         final patientName = patient['Name'] as String;
-
+        
+        // Load this patient's clinical file
         final clinicalFile = await FirestoreService.getClinicalFileByPatientId(patientId);
         if (clinicalFile != null) {
-          // Add diagnostics
-          for (final diagnostic in clinicalFile.diagnostics) {
-            if (diagnostic.doctorId == currentUserId) {
-              recordsList.add({
-                'id': diagnostic.id,
-                'Patient': patientName,
-                'PatientId': patientId,
-                'Date': diagnostic.date,
-                'Type': 'Diagnostic',
-                'Description': diagnostic.description,
-                'Notes': diagnostic.notes ?? '',
-              });
-            }
-          }
+          _addRecordsFromClinicalFile(recordsList, clinicalFile, patientId, patientName, currentUserId);
+        }
+      } else {
+        // Load records for all patients
+        for (final patient in _patientsList) {
+          final patientId = patient['id'] as String;
+          final patientName = patient['Name'] as String;
 
-          // Add medical notes
-          for (final note in clinicalFile.medicalNotes) {
-            if (note.authorId == currentUserId) {
-              recordsList.add({
-                'id': note.id,
-                'Patient': patientName,
-                'PatientId': patientId,
-                'Date': note.date,
-                'Type': 'Medical Note',
-                'Description': note.content,
-                'Notes': note.noteType ?? '',
-              });
-            }
-          }
-
-          // Add treatments
-          for (final treatment in clinicalFile.treatments) {
-            if (treatment.doctorId == currentUserId) {
-              recordsList.add({
-                'id': treatment.id,
-                'Patient': patientName,
-                'PatientId': patientId,
-                'Date': treatment.date,
-                'Type': 'Treatment',
-                'Description': treatment.medication,
-                'Notes': treatment.description,
-              });
-            }
+          final clinicalFile = await FirestoreService.getClinicalFileByPatientId(patientId);
+          if (clinicalFile != null) {
+            _addRecordsFromClinicalFile(recordsList, clinicalFile, patientId, patientName, currentUserId);
           }
         }
       }
@@ -152,13 +170,70 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading medical records: $e');
+      debugPrint('Error loading clinical records: $e');
+    }
+  }
+  
+  // Helper method to extract records from a clinical file
+  void _addRecordsFromClinicalFile(
+    List<Map<String, dynamic>> recordsList,
+    ClinicalFile clinicalFile,
+    String patientId,
+    String patientName,
+    String currentUserId,
+  ) {
+    // Add diagnostics
+    for (final diagnostic in clinicalFile.diagnostics) {
+      recordsList.add({
+        'id': diagnostic.id,
+        'Patient': patientName,
+        'PatientId': patientId,
+        'Date': diagnostic.date,
+        'Type': 'Diagnostic',
+        'Description': diagnostic.description,
+        'Notes': diagnostic.notes ?? '',
+        'DoctorId': diagnostic.doctorId,
+        'DoctorName': diagnostic.doctorName,
+      });
+    }
+
+    // Add medical notes
+    for (final note in clinicalFile.medicalNotes) {
+      recordsList.add({
+        'id': note.id,
+        'Patient': patientName,
+        'PatientId': patientId,
+        'Date': note.date,
+        'Type': 'Medical Note',
+        'Description': note.content,
+        'Notes': note.noteType ?? '',
+        'DoctorId': note.authorId,
+        'DoctorName': note.authorName,
+      });
+    }
+
+    // Add treatments
+    for (final treatment in clinicalFile.treatments) {
+      recordsList.add({
+        'id': treatment.id,
+        'Patient': patientName,
+        'PatientId': patientId,
+        'Date': treatment.date,
+        'Type': 'Treatment',
+        'Description': treatment.medication,
+        'Notes': treatment.description,
+        'DoctorId': treatment.doctorId,
+        'DoctorName': treatment.doctorName,
+      });
     }
   }
 
-  Future<void> _addMedicalRecord() async {
-    if (_selectedPatientId == null && _patientsList.isNotEmpty) {
-      // Show patient selection dialog
+  Future<void> _addClinicalRecord() async {
+    // If filtering by patient, use that patient
+    if (_filterPatientId != null) {
+      _selectedPatientId = _filterPatientId;
+    } else if (_selectedPatientId == null && _patientsList.isNotEmpty) {
+      // Otherwise, show patient selection dialog
       final result = await _showPatientSelectionDialog();
       if (result == null) return;
       _selectedPatientId = result;
@@ -169,7 +244,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         context,
         '/medic/records/add',
         arguments: {'patientId': _selectedPatientId},
-      ).then((_) => _loadMedicalRecords());
+      ).then((_) => _loadClinicalRecords());
     }
   }
 
@@ -215,7 +290,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         'recordData': record,
         'patientId': record['PatientId'],
       },
-    ).then((_) => _loadMedicalRecords());
+    ).then((_) => _loadClinicalRecords());
   }
 
   void _editRecord(Map<String, dynamic> record) {
@@ -226,7 +301,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         'recordData': record,
         'patientId': record['PatientId'],
       },
-    ).then((_) => _loadMedicalRecords());
+    ).then((_) => _loadClinicalRecords());
   }
 
   Future<void> _deleteRecord(Map<String, dynamic> record) async {
@@ -234,7 +309,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete Medical Record'),
+          title: const Text('Delete Clinical Record'),
           content: const Text('Are you sure you want to delete this record? This action cannot be undone.'),
           actions: [
             TextButton(
@@ -274,7 +349,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Record deleted successfully')),
           );
-          _loadMedicalRecords();
+          _loadClinicalRecords();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to delete record')),
@@ -317,18 +392,20 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         Expanded(
           child: Scaffold(
             appBar: AppBar(
-              title: const Text('Medical Records'),
+              title: _filterPatientId != null 
+                ? Text('Clinical File: $_activePatientName')
+                : const Text('Clinical Files'),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
-                  onPressed: _loadMedicalRecords,
+                  onPressed: _loadClinicalRecords,
                 ),
                 const SizedBox(width: 16),
               ],
             ),
             floatingActionButton: FloatingActionButton(
-              onPressed: _addMedicalRecord,
+              onPressed: _addClinicalRecord,
               child: const Icon(Icons.add),
             ),
             body: _isLoading
@@ -346,12 +423,14 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   Widget _buildMobileLayout() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Medical Records'),
+        title: _filterPatientId != null 
+          ? Text('Clinical File: $_activePatientName')
+          : const Text('Clinical Files'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: _loadMedicalRecords,
+            onPressed: _loadClinicalRecords,
           ),
         ],
       ),
@@ -364,7 +443,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _addMedicalRecord,
+        onPressed: _addClinicalRecord,
         child: const Icon(Icons.add),
       ),
       body: _isLoading
@@ -377,7 +456,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   }
 
   Widget _buildContent() {
-    if (_patientsList.isEmpty) {
+    if (_patientsList.isEmpty && _filterPatientId == null) {
       return const Center(
         child: Text('You have no patients assigned. Please ask an admin to assign patients to you.'),
       );
@@ -388,10 +467,10 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('No medical records found'),
+            const Text('No clinical records found'),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: _addMedicalRecord,
+              onPressed: _addClinicalRecord,
               icon: const Icon(Icons.add),
               label: const Text('Add Record'),
             ),
@@ -410,7 +489,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Medical Records Overview',
+                  'Clinical Files Overview',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -453,9 +532,56 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
           ),
         ),
         const SizedBox(height: 24),
+        if (_filterPatientId == null) ... [
+          // Patient filter dropdown - only if not already filtering by patient
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Text('Filter by Patient: '),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: DropdownButton<String?>(
+                      isExpanded: true,
+                      value: _selectedPatientId,
+                      hint: const Text('All Patients'),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedPatientId = value;
+                          // Filter records if a patient is selected
+                          if (value != null) {
+                            _filterPatientId = value;
+                            _loadClinicalRecords();
+                          } else {
+                            _filterPatientId = null;
+                            _loadClinicalRecords();
+                          }
+                        });
+                      },
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All Patients'),
+                        ),
+                        ..._patientsList.map((patient) {
+                          return DropdownMenuItem<String?>(
+                            value: patient['id'] as String,
+                            child: Text(patient['Name'] as String),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         Expanded(
           child: DataTableWidget(
-            columns: const ['Patient', 'Date', 'Type', 'Description', 'Actions'],
+            columns: const ['Patient', 'Date', 'Type', 'Description', 'Doctor', 'Actions'],
             rows: _recordsList.map((record) {
               return {
                 'id': record['id'],
@@ -463,6 +589,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                 'Date': _formatDate(record['Date']),
                 'Type': record['Type'],
                 'Description': record['Description'],
+                'Doctor': record['DoctorName'],
               };
             }).toList(),
             onRowTap: (row) {

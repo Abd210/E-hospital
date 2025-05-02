@@ -38,6 +38,13 @@ _$ClinicalFileImpl _$$ClinicalFileImplFromJson(Map<String, dynamic> json) =>
               ?.map((e) => Surgery.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      dischargeSummary: json['dischargeSummary'] == null
+          ? null
+          : DischargeSummary.fromJson(
+              json['dischargeSummary'] as Map<String, dynamic>),
+      vitalsReport: json['vitalsReport'] == null
+          ? null
+          : VitalsReport.fromJson(json['vitalsReport'] as Map<String, dynamic>),
       lastUpdated: json['lastUpdated'] == null
           ? null
           : DateTime.parse(json['lastUpdated'] as String),
@@ -60,6 +67,8 @@ Map<String, dynamic> _$$ClinicalFileImplToJson(_$ClinicalFileImpl instance) =>
       'medicalNotes': instance.medicalNotes,
       'prescriptions': instance.prescriptions,
       'surgeries': instance.surgeries,
+      'dischargeSummary': instance.dischargeSummary,
+      'vitalsReport': instance.vitalsReport,
       'lastUpdated': instance.lastUpdated?.toIso8601String(),
       'createdAt': instance.createdAt?.toIso8601String(),
     };

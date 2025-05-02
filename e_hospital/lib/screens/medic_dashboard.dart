@@ -1,135 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:e_hospital/core/widgets/app_sidebar.dart';
 import 'package:e_hospital/core/widgets/responsive_layout.dart';
-import 'package:e_hospital/core/widgets/dashboard_card.dart';
-import 'package:e_hospital/core/widgets/chart_card.dart';
-import 'package:e_hospital/core/widgets/data_table_widget.dart';
 import 'package:e_hospital/theme/app_theme.dart';
 import 'package:e_hospital/services/firestore_service.dart';
+import 'package:e_hospital/models/doctor.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
+import 'package:intl/intl.dart';
 
 class MedicDashboard extends StatefulWidget {
-  final String? selectedPatientId;
-  final String? initialTab;
+  final String initialTab;
   
   const MedicDashboard({
     Key? key,
-    this.selectedPatientId,
-    this.initialTab,
+    this.initialTab = '',
   }) : super(key: key);
 
   @override
   State<MedicDashboard> createState() => _MedicDashboardState();
 }
 
-class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProviderStateMixin {
+class _MedicDashboardState extends State<MedicDashboard> {
   bool _isLoading = true;
-  Map<String, dynamic> _dashboardData = {};
-  List<Map<String, dynamic>> _myPatients = [];
-  List<Map<String, dynamic>> _upcomingAppointments = [];
-  List<Map<String, dynamic>> _recentMedicalRecords = [];
-  String _doctorName = '';
-  String _doctorEmail = '';
-  String _doctorSpecialty = '';
   late String _currentTab;
   
-  late TabController _tabController;
+  // Doctor data
+  String _doctorName = '';
+  String _doctorEmail = '';
+  Map<String, dynamic>? _dashboardData;
+  
+  // Patient and appointment data
+  int _patientCount = 0;
+  List<Map<String, dynamic>> _todayAppointments = [];
+  List<Map<String, dynamic>> _upcomingAppointments = [];
 
   @override
   void initState() {
     super.initState();
-    _currentTab = widget.initialTab ?? '';
-    _tabController = TabController(length: 3, vsync: this);
-    
-    // Set the correct tab index based on initialTab
-    if (_currentTab.isNotEmpty) {
-      int tabIndex = 0;
-      switch (_currentTab) {
-        case 'patients':
-          tabIndex = 1;
-          break;
-        case 'appointments':
-          tabIndex = 2;
-          break;
-        case 'records':
-        case 'profile':
-          // These tabs are handled differently - navigating to separate screens
-          tabIndex = 0;
-          break;
-        default:
-          tabIndex = 0;
-      }
-      _tabController.animateTo(tabIndex);
-    }
-    
-    // Listen to tab changes to update _currentTab
-    _tabController.addListener(_handleTabChange);
-    
+    _currentTab = widget.initialTab.isEmpty ? 'dashboard' : widget.initialTab;
     _loadDashboardData();
-    
-    // If a patient ID is selected, switch to patients tab
-    if (widget.selectedPatientId != null) {
-      _currentTab = 'patients';
-      _tabController.animateTo(1); // Patients tab index
-    }
-  }
-
-  @override
-  void dispose() {
-    _tabController.removeListener(_handleTabChange);
-    _tabController.dispose();
-    super.dispose();
-  }
-  
-  void _handleTabChange() {
-    if (!_tabController.indexIsChanging) {
-      setState(() {
-        switch (_tabController.index) {
-          case 0:
-            _currentTab = '';
-            break;
-          case 1:
-            _currentTab = 'patients';
-            break;
-          case 2:
-            _currentTab = 'appointments';
-            break;
-        }
-      });
-    }
   }
   
   @override
   void didUpdateWidget(MedicDashboard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
-    // Handle initialTab changes from navigation
-    if (widget.initialTab != oldWidget.initialTab && widget.initialTab != null) {
+    if (oldWidget.initialTab != widget.initialTab && widget.initialTab.isNotEmpty) {
       setState(() {
-        _currentTab = widget.initialTab!;
-        
-        // Update tab controller to match the new tab
-        int tabIndex = 0;
-        switch (_currentTab) {
-          case 'patients':
-            tabIndex = 1;
-            break;
-          case 'appointments':
-            tabIndex = 2;
-            break;
-          default:
-            tabIndex = 0;
-        }
-        _tabController.animateTo(tabIndex);
-      });
-    }
-    
-    // Handle patient selection changes
-    if (widget.selectedPatientId != oldWidget.selectedPatientId && 
-        widget.selectedPatientId != null) {
-      setState(() {
-        _currentTab = 'patients';
-        _tabController.animateTo(1); // Patients tab index
+        _currentTab = widget.initialTab;
       });
     }
   }
@@ -140,92 +56,63 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
     });
 
     try {
-      // Get current user ID
-      final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
-      if (currentUserId == null) {
-        debugPrint("Current user ID is null");
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: User ID not found. Please try logging in again.')),
-        );
-        return;
+      final userId = auth.FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) {
+        throw Exception('User not authenticated');
       }
-
-      // Get doctor data
-      final doctor = await FirestoreService.getUserById(currentUserId);
-      if (doctor != null) {
+      
+      // Get doctor details
+      final doctor = await FirestoreService.getDoctorById(userId);
+      if (doctor == null) {
+        throw Exception('Doctor not found');
+      }
+      
+      // Get dashboard data (patients, appointments, etc.)
+      final dashboardData = await FirestoreService.getDoctorDashboardData(userId);
+      
+      if (mounted) {
         setState(() {
           _doctorName = doctor.name;
           _doctorEmail = doctor.email;
-          _doctorSpecialty = (doctor.profile as Map<String, dynamic>?)?['specialization'] ?? 'General';
-        });
-        
-        debugPrint("Loaded doctor basic info: $_doctorName");
-
-        // Get dashboard data (with error handling)
-        try {
-          _dashboardData = await FirestoreService.getDoctorDashboardData(currentUserId);
-          debugPrint("Loaded dashboard data: $_dashboardData");
-        } catch (e) {
-          debugPrint("Error loading dashboard data: $e");
-          _dashboardData = {};
-        }
-
-        // Get my patients (with error handling)
-        try {
-          final patients = await FirestoreService.getDoctorPatients(currentUserId);
-          debugPrint("Loaded ${patients.length} patients");
+          _dashboardData = dashboardData;
           
-          if (patients.isEmpty) {
-            _myPatients = [];
-          } else {
-            _myPatients = patients.map((patient) {
+          // Extract specific data
+          _patientCount = dashboardData['patientCount'] as int? ?? 0;
+          
+          // Process today's appointments
+          final todayAppointments = dashboardData['todayAppointments'] as List<dynamic>? ?? [];
+          _todayAppointments = todayAppointments.map((appointment) {
               return {
-                'id': patient.id,
-                'Name': patient.name,
-                'Age': patient.age.toString(),
-                'Gender': patient.gender,
-                'Condition': patient.medicalCondition,
-                'Last Checkup': patient.lastCheckup?.toString() ?? 'Not Available',
+              'id': appointment['id'],
+              'Patient': appointment['patientName'] ?? 'Unknown Patient',
+              'Time': appointment['time'] ?? 'N/A',
+              'Purpose': appointment['purpose'] ?? 'Consultation',
+              'Status': appointment['status'] ?? 'scheduled',
               };
             }).toList();
-          }
-        } catch (e) {
-          debugPrint("Error loading patients: $e");
-          _myPatients = [];
-        }
-
-        // Get upcoming appointments (with error handling)
-        try {
-          final appointments = await FirestoreService.getDoctorUpcomingAppointments(currentUserId);
-          debugPrint("Loaded ${appointments.length} upcoming appointments");
           
-          if (appointments.isEmpty) {
-            _upcomingAppointments = [];
-          } else {
-            _upcomingAppointments = appointments.map((appointment) => {
-              'id': appointment.id,
-              'Patient': appointment.patientName,
-              'Date': appointment.appointmentDate,
-              'Time': appointment.time,
-              'Type': appointment.type.toString().split('.').last,
-              'Status': appointment.status.toString().split('.').last,
+          // Process upcoming appointments
+          final upcomingAppointments = dashboardData['upcomingAppointments'] as List<dynamic>? ?? [];
+          _upcomingAppointments = upcomingAppointments.map((appointment) {
+            final date = (appointment['appointmentDate'] as dynamic)?.toDate();
+            return {
+              'id': appointment['id'],
+              'Patient': appointment['patientName'] ?? 'Unknown Patient',
+              'Date': date != null ? DateFormat('MMM dd, yyyy').format(date) : 'N/A',
+              'Time': appointment['time'] ?? 'N/A',
+              'Purpose': appointment['purpose'] ?? 'Consultation',
+              'Status': appointment['status'] ?? 'scheduled',
+            };
             }).toList();
+        });
           }
         } catch (e) {
-          debugPrint("Error loading upcoming appointments: $e");
-          _upcomingAppointments = [];
-        }
-      } else {
-        debugPrint("Failed to load doctor profile");
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error loading doctor profile. Please try again.')),
-        );
-      }
-    } catch (e) {
-      debugPrint("Error in _loadDashboardData: $e");
+      debugPrint('Error loading dashboard data: $e');
+      if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -233,6 +120,12 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
         });
       }
     }
+  }
+  
+  void _switchTab(String tab) {
+    setState(() {
+      _currentTab = tab;
+    });
   }
 
   @override
@@ -244,189 +137,37 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
       ),
     );
   }
-
-  Widget _buildContentPage() {
-    if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading dashboard data...'),
-          ],
-        ),
-      );
-    }
-
-    // Determine if we should display an error message
-    final hasData = _dashboardData.isNotEmpty || _myPatients.isNotEmpty || _upcomingAppointments.isNotEmpty;
-    if (!hasData) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            const Text(
-              'No data available',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Unable to load your dashboard data. Please try again.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadDashboardData,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Welcome section
-          Text(
-            'Welcome back, Dr. $_doctorName',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Here\'s an overview of your activities',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 32),
-          
-          // Stats
-          _buildStatsSection(),
-          const SizedBox(height: 32),
-          
-          // Upcoming appointments section
-          Text(
-            'Upcoming Appointments',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _upcomingAppointments.isEmpty
-              ? _buildEmptyStateCard(
-                  icon: Icons.calendar_today_outlined,
-                  title: 'No upcoming appointments',
-                  subtitle: 'You have no scheduled appointments with your patients',
-                )
-              : _buildAppointmentsSection(),
-          const SizedBox(height: 32),
-          
-          // Patients section
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'My Patients',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _tabController.animateTo(1),
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('View All'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _myPatients.isEmpty
-              ? _buildEmptyStateCard(
-                  icon: Icons.people_outline,
-                  title: 'No patients assigned',
-                  subtitle: 'You have no patients assigned to you',
-                )
-              : _buildPatientsSection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyStateCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Icon(icon, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
   
   Widget _buildMobileLayout() {
-    // Create a proper current path based on the active tab
-    final currentPath = '/medic${_currentTab.isNotEmpty ? '/$_currentTab' : ''}';
-    
     return Scaffold(
       appBar: AppBar(
         title: Text(_getAppBarTitle()),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
             onPressed: _loadDashboardData,
           ),
         ],
       ),
       drawer: Drawer(
         child: AppSidebar(
-          currentPath: currentPath,
+          currentPath: _getCurrentPath(),
           userRole: 'medicalPersonnel',
           userName: _doctorName,
           userEmail: _doctorEmail,
         ),
       ),
-      body: _buildContent(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildCurrentTabContent(),
     );
   }
   
   Widget _buildDesktopLayout() {
-    // Create a proper current path based on the active tab
-    final currentPath = '/medic${_currentTab.isNotEmpty ? '/$_currentTab' : ''}';
-    
     return Row(
       children: [
         AppSidebar(
-          currentPath: currentPath,
+          currentPath: _getCurrentPath(),
           userRole: 'medicalPersonnel',
           userName: _doctorName,
           userEmail: _doctorEmail,
@@ -441,72 +182,47 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
                   tooltip: 'Refresh',
                   onPressed: _loadDashboardData,
                 ),
-                const SizedBox(width: 16),
               ],
             ),
-            body: _buildContent(),
+            body: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: _buildCurrentTabContent(),
+                  ),
           ),
         ),
       ],
     );
   }
   
-  Widget _buildContent() {
-    // Special handling for tabs that should navigate to different screens
-    if (_currentTab == 'records') {
-      // Navigate to MedicalRecordsScreen
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          Navigator.pushReplacementNamed(context, '/medic/records');
-        }
-      });
-      return const Center(child: CircularProgressIndicator());
-    } else if (_currentTab == 'profile') {
-      // For now, just show profile in the existing dashboard
-      return _buildProfileContent();
+  String _getCurrentPath() {
+    switch (_currentTab) {
+      case 'dashboard':
+        return '/medic';
+      case 'patients':
+        return '/medic/patients';
+      case 'appointments':
+        return '/medic/appointments';
+      case 'records':
+        return '/medic/records';
+      case 'profile':
+        return '/medic/profile';
+      default:
+        return '/medic';
     }
-    
-    // Normal tab handling
-    if (_currentTab.isEmpty) {
-      return _buildContentPage();
-    }
-    
-    return Column(
-      children: [
-        TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Dashboard'),
-            Tab(text: 'My Patients'),
-            Tab(text: 'Appointments'),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildContentPage(),
-              _buildPatientsTab(),
-              _buildAppointmentsTab(),
-            ],
-          ),
-        ),
-      ],
-    );
   }
   
   String _getAppBarTitle() {
     switch (_currentTab) {
+      case 'dashboard':
+        return 'Doctor Dashboard';
       case 'patients':
-        return widget.selectedPatientId != null ? 'Patient Details' : 'My Patients';
+        return 'My Patients';
       case 'appointments':
         return 'Appointments';
       case 'records':
-        return 'Medical Records';
-      case 'prescriptions':
-        return 'Prescriptions';
-      case 'lab-results':
-        return 'Laboratory Results';
+        return 'Clinical Files';
       case 'profile':
         return 'My Profile';
       default:
@@ -514,464 +230,184 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
     }
   }
   
-  Widget _buildPatientsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'My Patients',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 24),
-        DataTableWidget(
-          columns: ['Name', 'Age', 'Gender', 'Condition', 'Last Checkup'],
-          rows: _myPatients,
-          onRowTap: (row) {
-            // View patient details
-            Navigator.pushNamed(context, '/medic/patients/${row['id']}');
-          },
-          maxHeight: 600,
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildAppointmentsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'All Appointments',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 24),
-        DataTableWidget(
-          columns: ['Patient', 'Date', 'Time', 'Type', 'Status'],
-          rows: _upcomingAppointments,
-          onRowTap: (row) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Selected appointment: ${row['Patient']}'))
-            );
-          },
-          maxHeight: 600,
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildPatientsTab() {
-    if (_myPatients.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.people_outline, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text(
-              'No patients assigned to you',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Patients need to be assigned to you by an administrator',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadDashboardData,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'My Patients',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            TextButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/medic/patients'),
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('View All'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: DataTableWidget(
-            columns: ['Name', 'Age', 'Gender', 'Condition'],
-            rows: _myPatients,
-            onRowTap: (row) {
-              _showPatientOptions(row);
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Add a method to show patient options
-  void _showPatientOptions(Map<String, dynamic> patient) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Patient: ${patient['Name']}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.person),
-                title: const Text('View Patient Details'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(context, '/medic/patients/${patient['id']}');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_today),
-                title: const Text('View Appointments'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _navigateToPatientAppointments(patient);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.medical_services),
-                title: const Text('Add Medical Record'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(
-                    context, 
-                    '/medic/records/add',
-                    arguments: {'patientId': patient['id']},
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.medication),
-                title: const Text('Add Prescription'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(
-                    context, 
-                    '/medic/prescriptions/add',
-                    arguments: {'patientId': patient['id']},
-                  );
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // Add a method to navigate to patient appointments
-  void _navigateToPatientAppointments(Map<String, dynamic> patient) async {
-    try {
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-      
-      // Get patient's appointments with this doctor
-      final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
-      debugPrint('Current doctor ID: $currentUserId');
-      debugPrint('Looking for appointments with patient ID: ${patient['id']}');
-      
-      if (currentUserId == null) {
-        if (context.mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User not authenticated')),
-          );
-        }
-        return;
-      }
-      
-      // First check if there are any appointments for this patient regardless of doctor
-      final allPatientAppointments = await FirestoreService.getPatientAppointments(patient['id']);
-      debugPrint('Patient has ${allPatientAppointments.length} total appointments in the system');
-      
-      // Get appointments for this patient with this doctor
-      final appointments = await FirestoreService.getPatientAppointmentsWithDoctor(
-        patient['id'], 
-        currentUserId
-      );
-      
-      debugPrint('Found ${appointments.length} appointments for this patient with this doctor');
-      
-      // Print each appointment for debugging
-      for (var appointment in appointments) {
-        debugPrint('Appointment ID: ${appointment.id}, Date: ${appointment.appointmentDate}, Doctor: ${appointment.doctorName}, Patient: ${appointment.patientName}');
-      }
-      
-      if (context.mounted) {
-        // Hide loading indicator
-        Navigator.pop(context);
-        
-        // Show appointments
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Appointments with ${patient['Name']}'),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: 400,
-              child: appointments.isEmpty
-                  ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('No appointments found with this patient'),
-                        if (allPatientAppointments.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text('Patient has ${allPatientAppointments.length} appointments with other doctors')
-                        ]
-                      ],
-                    )
-                  : ListView.builder(
-                      itemCount: appointments.length,
-                      itemBuilder: (context, index) {
-                        final appointment = appointments[index];
-                        // Format date properly
-                        final formattedDate = appointment.appointmentDate != null
-                            ? '${appointment.appointmentDate.year}-${appointment.appointmentDate.month}-${appointment.appointmentDate.day}'
-                            : 'No date';
-                        
-                        return ListTile(
-                          title: Text(appointment.patientName),
-                          subtitle: Text('$formattedDate, ${appointment.time}'),
-                          trailing: Chip(
-                            label: Text(
-                              appointment.status.toString().split('.').last,
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                            backgroundColor: _getAppointmentStatusColor(appointment.status.toString()),
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.pushNamed(
-                              context, 
-                              '/medic/appointments/view/${appointment.id}',
-                            );
-                          },
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Navigate to add appointment form with patient pre-selected
-                  Navigator.pushNamed(
-                    context, 
-                    '/medic/appointments/add',
-                    arguments: {'patientId': patient['id']},
-                  );
-                },
-                child: const Text('Add Appointment'),
-              ),
-            ],
+  Widget _buildCurrentTabContent() {
+    switch (_currentTab) {
+      case 'dashboard':
+        return _buildDashboardContent();
+      case 'appointments':
+        return _buildAppointmentsContent();
+      case 'patients':
+        // For patients tab, we use a different structure to accommodate the Expanded widget
+        return Scaffold(
+          body: _buildPatientsContent(),
+          floatingActionButton: FloatingActionButton(
+            onPressed: _addNewPatient,
+            child: const Icon(Icons.add),
+            tooltip: 'Add Patient',
           ),
         );
-      }
-    } catch (e) {
-      debugPrint('Error getting patient appointments: $e');
-      debugPrint('Exception details: ${e.toString()}');
-      if (context.mounted) {
-        Navigator.pop(context); // Hide loading indicator
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error getting appointments: $e')),
-        );
-      }
-    }
-  }
-
-  Color _getAppointmentStatusColor(String status) {
-    switch (status.toUpperCase()) {
-      case 'SCHEDULED':
-        return Colors.blue;
-      case 'COMPLETED':
-        return Colors.green;
-      case 'CANCELLED':
-        return Colors.red;
-      case 'PENDING':
-        return Colors.orange;
       default:
-        return Colors.grey;
+        return _buildDashboardContent();
     }
   }
-
-  Widget _buildAppointmentsTab() {
-    if (_upcomingAppointments.isEmpty) {
-      return Center(
+  
+  Widget _buildDashboardContent() {
+    return SingleChildScrollView(
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+          _buildWelcomeSection(),
+        const SizedBox(height: 24),
+          _buildStatisticsSection(),
+          const SizedBox(height: 24),
+          _buildTodayAppointmentsSection(),
+          const SizedBox(height: 24),
+          _buildUpcomingAppointmentsSection(),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildAppointmentsContent() {
+    return SingleChildScrollView(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.calendar_today_outlined, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
+          Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
             const Text(
-              'No upcoming appointments',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'You have no scheduled appointments with your patients',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+                    'All Appointments',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
               children: [
                 ElevatedButton.icon(
-                  onPressed: _loadDashboardData,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh'),
-                ),
-                const SizedBox(width: 16),
-                TextButton.icon(
                   onPressed: () {
-                    Navigator.pushNamed(context, '/medic/appointments/add');
+                          // Navigate to the appointment creation screen
+                          Navigator.pushNamed(context, '/admin/appointments/add').then((_) {
+                            // Refresh appointments list after returning
+                            _loadDashboardData();
+                          });
                   },
                   icon: const Icon(Icons.add),
-                  label: const Text('Create Appointment'),
-                ),
-              ],
+                        label: const Text('New Appointment'),
+                      ),
+                      const SizedBox(width: 16),
+                      OutlinedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.filter_list),
+                        label: const Text('Filter'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Today\'s Appointments',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _todayAppointments.isEmpty
+                      ? Center(
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today_outlined,
+                                size: 48,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No appointments scheduled for today',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _buildTodayAppointmentsList(),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Upcoming Appointments',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _upcomingAppointments.isEmpty
+                      ? Center(
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.event_busy,
+                                size: 48,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No upcoming appointments',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _buildUpcomingAppointmentsList(),
+                ],
+              ),
+            ),
             ),
           ],
         ),
       );
     }
+  
+  Widget _buildPatientsContent() {
+    // Get the patient list from the dashboard data
+    final patientList = _dashboardData != null && _dashboardData!.containsKey('patientList') 
+        ? (_dashboardData!['patientList'] as List<dynamic>? ?? []) 
+        : <dynamic>[];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Upcoming Appointments',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            TextButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/medic/appointments'),
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('View All'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: DataTableWidget(
-            columns: ['Patient', 'Date', 'Time', 'Type', 'Status'],
-            rows: _upcomingAppointments,
-            onRowTap: (row) {
-              // Navigate to appointment details
-              _navigateToAppointmentDetails(row);
-            },
-            onEdit: (row) {
-              // Navigate to edit appointment
-              Navigator.pushNamed(
-                context, 
-                '/medic/appointments/edit/${row['id']}',
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Add new method to handle appointment navigation
-  void _navigateToAppointmentDetails(Map<String, dynamic> appointment) {
-    // Navigate to appointment details
-    Navigator.pushNamed(
-      context, 
-      '/medic/appointments/view/${appointment['id']}',
-    );
-  }
-
-  Widget _buildStatsSection() {
-    final patientCount = _dashboardData['patientCount'] ?? 0;
-    final appointmentCount = _dashboardData['appointmentCount'] ?? 0;
-    final todayAppointments = (_dashboardData['todayAppointments'] as List?)?.length ?? 0;
-
-    return GridView.count(
-      crossAxisCount: ResponsiveLayout.isDesktop(context) ? 3 : 2,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        DashboardCard(
-          title: 'My Patients',
-          value: patientCount.toString(),
-          icon: Icons.people_outline,
-          iconColor: AppColors.primary,
-          backgroundColor: AppColors.primary.withOpacity(0.1),
-          subtitle: '+2 new this month',
-          showIncreaseIcon: true,
-          onTap: () => Navigator.pushNamed(context, '/medic/patients'),
-        ),
-        DashboardCard(
-          title: 'Appointments',
-          value: appointmentCount.toString(),
-          icon: Icons.calendar_today_outlined,
-          iconColor: AppColors.secondary,
-          backgroundColor: AppColors.secondary.withOpacity(0.1),
-          subtitle: '$todayAppointments today',
-          onTap: () => Navigator.pushNamed(context, '/medic/appointments'),
-        ),
-        DashboardCard(
-          title: 'Medical Records',
-          value: '48',
-          icon: Icons.folder_outlined,
-          iconColor: Colors.orange,
-          backgroundColor: Colors.orange.withOpacity(0.1),
-          subtitle: '3 new this week',
-          showIncreaseIcon: true,
-          onTap: () => Navigator.pushNamed(context, '/medic/records'),
-        ),
-      ],
-    );
-  }
-
-  // New profile content section
-  Widget _buildProfileContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -979,73 +415,734 @@ class _MedicDashboardState extends State<MedicDashboard> with SingleTickerProvid
             elevation: 2,
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Avatar
-                  const CircleAvatar(
-                    radius: 60,
-                    backgroundColor: AppColors.primary,
-                    child: Icon(
-                      Icons.person,
-                      size: 80,
-                      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+                      const Text(
+                        'My Patients',
+                        style: TextStyle(
+                          fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Name
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add),
+                        label: const Text('Add Patient'),
+                        onPressed: _addNewPatient,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
                   Text(
-                    'Dr. $_doctorName',
+                    'Total Patients: $_patientCount',
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  // Specialty
-                  Text(
-                    _doctorSpecialty,
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // Info sections
-                  _buildProfileInfoItem(Icons.email, 'Email', _doctorEmail),
-                  _buildProfileInfoItem(Icons.people, 'Patients', '${_myPatients.length}'),
-                  _buildProfileInfoItem(Icons.calendar_today, 'Appointments', '${_upcomingAppointments.length}'),
-                  _buildProfileInfoItem(Icons.medical_services, 'Specialty', _doctorSpecialty),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: patientList.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No patients assigned to you yet. Please contact an administrator.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: patientList.length,
+                  itemBuilder: (context, index) {
+                    final patient = patientList[index] as Map<String, dynamic>;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 30,
+                              backgroundColor: AppColors.secondary.withOpacity(0.2),
+                              child: const Icon(Icons.person, size: 30, color: AppColors.secondary),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    patient['name'] ?? 'Unknown Patient',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (patient.containsKey('age') && patient.containsKey('gender'))
+                                    Text('${patient['age']} years, ${patient['gender']}'),
+                                  if (patient.containsKey('medicalCondition') && patient['medicalCondition'] != null)
+                                    Text('Condition: ${patient['medicalCondition']}'),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      ElevatedButton.icon(
+                                        icon: const Icon(Icons.visibility),
+                                        label: const Text('View Details'),
+                                        onPressed: () => _viewPatientDetails(patient),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.folder_open, color: Colors.orange),
+                                        label: const Text('Medical Records', style: TextStyle(color: Colors.orange)),
+                                        onPressed: () => _viewPatientRecords(patient),
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(color: Colors.orange),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, color: Colors.red),
+                                        onPressed: () => _deletePatient(patient),
+                                        tooltip: 'Delete Patient',
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+              },
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildWelcomeSection() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: AppColors.primary.withOpacity(0.2),
+                  child: Icon(
+                    Icons.person,
+                    size: 30,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Welcome, Dr. $_doctorName',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        DateTime.now().hour < 12
+                            ? 'Good morning! Have a great day ahead.'
+                            : DateTime.now().hour < 17
+                                ? 'Good afternoon! Hope your day is going well.'
+                                : 'Good evening! Time to wrap up for the day.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Quick Actions',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildQuickActionButton(
+                  icon: Icons.person_search,
+                  label: 'View Patients',
+                  onPressed: () {
+                    _switchTab('patients');
+                  },
+                ),
+                _buildQuickActionButton(
+                  icon: Icons.calendar_today,
+                  label: 'Appointments',
+                  onPressed: () {
+                    _switchTab('appointments');
+                  },
+                ),
+                _buildQuickActionButton(
+                  icon: Icons.medical_services,
+                  label: 'Medical Records',
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/medic/records');
+                  },
+                ),
+                _buildQuickActionButton(
+                  icon: Icons.person,
+                  label: 'My Profile',
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/medic/profile');
+                },
+              ),
+            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
   
-  Widget _buildProfileInfoItem(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Column(
+      children: [
+        ElevatedButton(
+          onPressed: onPressed,
+          style: ElevatedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: const EdgeInsets.all(16),
+          ),
+          child: Icon(icon, size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildStatisticsSection() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Overview',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatCard(
+                  title: 'My Patients',
+                  value: _patientCount.toString(),
+                  icon: Icons.people,
+                  color: Colors.blue,
+                ),
+                _buildStatCard(
+                  title: 'Today\'s Appointments',
+                  value: _todayAppointments.length.toString(),
+                  icon: Icons.today,
+                  color: Colors.orange,
+                ),
+                _buildStatCard(
+                  title: 'Upcoming Appointments',
+                  value: _upcomingAppointments.length.toString(),
+                  icon: Icons.calendar_month,
+                  color: Colors.green,
+                ),
+                _buildStatCard(
+                  title: 'Completed Today',
+                  value: _todayAppointments.where((a) => a['Status'] == 'completed').length.toString(),
+                  icon: Icons.check_circle,
+                  color: Colors.purple,
+                ),
+              ],
+            ),
+          ],
+        ),
+        ),
+      );
+    }
+
+  Widget _buildStatCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Card(
+        elevation: 0,
+        color: color.withOpacity(0.1),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primary),
-          const SizedBox(width: 16),
-          Text(
-            label,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  Icon(
+                    icon,
+                    color: color,
+                    size: 20,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  color: color,
             ),
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 16),
+        ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodayAppointmentsSection() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Today\'s Appointments',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                TextButton.icon(
+              onPressed: () {
+                    _switchTab('appointments');
+                  },
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _todayAppointments.isEmpty
+                ? Center(
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 48,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No appointments scheduled for today',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _buildTodayAppointmentsList(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTodayAppointmentsList() {
+    return Column(
+      children: _todayAppointments.map((appointment) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          elevation: 0,
+          color: AppColors.background,
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: CircleAvatar(
+              backgroundColor: _getStatusColor(appointment['Status'] as String).withOpacity(0.2),
+              child: Icon(
+                Icons.person,
+                color: _getStatusColor(appointment['Status'] as String),
+              ),
+            ),
+            title: Text(
+              appointment['Patient'] as String,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text('Time: ${appointment['Time']}'),
+                Text('Purpose: ${appointment['Purpose']}'),
+              ],
+            ),
+            trailing: Chip(
+              label: Text(
+                _getStatusDisplayText(appointment['Status'] as String),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                ),
+              ),
+              backgroundColor: _getStatusColor(appointment['Status'] as String),
+            ),
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/medic/appointments/view/${appointment['id']}',
+              );
+            },
+          ),
+        );
+      }).toList(),
+    );
+  }
+  
+  Widget _buildUpcomingAppointmentsSection() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Upcoming Appointments',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    _switchTab('appointments');
+                  },
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _upcomingAppointments.isEmpty
+                ? Center(
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.event_busy,
+                          size: 48,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No upcoming appointments',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _buildUpcomingAppointmentsList(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildUpcomingAppointmentsList() {
+    return Column(
+      children: _upcomingAppointments.take(5).map((appointment) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          elevation: 0,
+          color: AppColors.background,
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: CircleAvatar(
+              backgroundColor: _getStatusColor(appointment['Status'] as String).withOpacity(0.2),
+              child: Icon(
+                Icons.person,
+                color: _getStatusColor(appointment['Status'] as String),
+              ),
+            ),
+            title: Text(
+              appointment['Patient'] as String,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                const SizedBox(height: 4),
+                Text('Date: ${appointment['Date']}'),
+                Text('Time: ${appointment['Time']}'),
+                Text('Purpose: ${appointment['Purpose']}'),
+              ],
+            ),
+                          trailing: Chip(
+                            label: Text(
+                _getStatusDisplayText(appointment['Status'] as String),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                ),
+              ),
+              backgroundColor: _getStatusColor(appointment['Status'] as String),
+                          ),
+                          onTap: () {
+                            Navigator.pushNamed(
+                              context, 
+                '/medic/appointments/view/${appointment['id']}',
+                        );
+                      },
+                    ),
+        );
+      }).toList(),
+    );
+  }
+  
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'scheduled':
+        return Colors.blue;
+      case 'completed':
+        return Colors.green;
+      case 'cancelled':
+        return Colors.red;
+      case 'pending':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusDisplayText(String status) {
+    // Capitalize first letter
+    if (status.isEmpty) return '';
+    return status[0].toUpperCase() + status.substring(1).toLowerCase();
+  }
+  
+  // Add new methods for patient CRUD operations
+  void _addNewPatient() {
+    // Show dialog to add a new patient
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add New Patient'),
+        content: const Text('Please contact an administrator to add a new patient.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
         ],
       ),
     );
+  }
+  
+  void _viewPatientDetails(Map<String, dynamic> patient) {
+    if (patient.containsKey('id')) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(patient['name'] ?? 'Patient Details'),
+          content: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+        children: [
+                _buildDetailRow('ID', patient['id']),
+                _buildDetailRow('Name', patient['name']),
+                _buildDetailRow('Age', patient['age']?.toString() ?? 'N/A'),
+                _buildDetailRow('Gender', patient['gender'] ?? 'N/A'),
+                _buildDetailRow('Medical Condition', patient['medicalCondition'] ?? 'None'),
+                const Divider(),
+                  const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('View Medical Records'),
+                  onPressed: () {
+                    Navigator.pop(context);  // Close dialog
+                    _viewPatientRecords(patient);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 40),
+                  ),
+                ),
+                ],
+              ),
+            ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    }
+  }
+  
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              '$label:',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _viewPatientRecords(Map<String, dynamic> patient) {
+    if (patient.containsKey('id')) {
+      Navigator.pushNamed(
+        context,
+        '/medic/patients/${patient['id']}',
+      ).then((_) {
+        // Refresh when returning
+        _loadDashboardData();
+      });
+    }
+  }
+  
+  void _deletePatient(Map<String, dynamic> patient) {
+    if (patient.containsKey('id')) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Patient'),
+          content: Text('Are you sure you want to remove ${patient['name']} from your patient list?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(child: CircularProgressIndicator()),
+                );
+                
+                try {
+                  // In a real app, this would call a service to remove the patient
+                  // For now, just show a success message and refresh
+                  await Future.delayed(const Duration(seconds: 1));
+                  
+                  if (mounted) {
+                    // Close loading indicator
+                    Navigator.pop(context);
+                    
+                    // Show success message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Operation not permitted. Contact an administrator.')),
+                    );
+                    
+                    // Refresh data
+                    _loadDashboardData();
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    // Close loading indicator
+                    Navigator.pop(context);
+                    
+                    // Show error message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }

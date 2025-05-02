@@ -27,8 +27,15 @@ enum AppointmentType {
   therapy
 }
 
+/// Interface for Firestore conversion
+abstract class FirestoreConvertible {
+  Map<String, dynamic> toFirestore();
+}
+
 @freezed
-class Appointment with _$Appointment {
+class Appointment with _$Appointment implements FirestoreConvertible {
+  const Appointment._(); // Add this constructor for implementing methods
+
   const factory Appointment({
     required String id,
     required String patientId,
@@ -196,6 +203,7 @@ class Appointment with _$Appointment {
     }
   }
   
+  @override
   Map<String, dynamic> toFirestore() {
     final json = toJson();
     
@@ -204,19 +212,19 @@ class Appointment with _$Appointment {
       json['appointmentDate'] = Timestamp.fromDate(appointmentDate);
     }
     
-    if (json['checkedInTime'] != null) {
+    if (json['checkedInTime'] != null && checkedInTime != null) {
       json['checkedInTime'] = Timestamp.fromDate(checkedInTime!);
     }
     
-    if (json['checkedOutTime'] != null) {
+    if (json['checkedOutTime'] != null && checkedOutTime != null) {
       json['checkedOutTime'] = Timestamp.fromDate(checkedOutTime!);
     }
     
-    if (json['createdAt'] != null) {
+    if (json['createdAt'] != null && createdAt != null) {
       json['createdAt'] = Timestamp.fromDate(createdAt!);
     }
     
-    if (json['updatedAt'] != null) {
+    if (json['updatedAt'] != null && updatedAt != null) {
       json['updatedAt'] = Timestamp.fromDate(updatedAt!);
     }
     

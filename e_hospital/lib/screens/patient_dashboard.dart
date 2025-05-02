@@ -56,64 +56,80 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
           _patientName = userData.name;
           _patientEmail = userData.email;
           _patientData = userData.profile as Map<String, dynamic>? ?? {};
+          
+          // Load assigned doctors
+          _myDoctors = [];
+          final assignedDoctors = await FirestoreService.getPatientDoctors(currentUser.uid);
+          for (final doctor in assignedDoctors) {
+            _myDoctors.add({
+              'id': doctor.id,
+              'Name': doctor.name,
+              'Specialization': doctor.profile != null && doctor.profile!.containsKey('specialization') 
+                  ? doctor.profile!['specialization'] 
+                  : 'General',
+              'Hospital': doctor.profile != null && doctor.profile!.containsKey('hospital') 
+                  ? doctor.profile!['hospital'] 
+                  : 'Main Hospital',
+              'Contact': doctor.phone ?? 'N/A',
+            });
+          }
+          
+          // Load appointments
+          _myAppointments = [];
+          final appointments = await FirestoreService.getPatientUpcomingAppointments(currentUser.uid);
+          for (final appointment in appointments) {
+            _myAppointments.add({
+              'id': appointment.id,
+              'Doctor': appointment.doctorName,
+              'Date': appointment.appointmentDate,
+              'Time': appointment.time,
+              'Type': appointment.type.toString().split('.').last,
+              'Status': appointment.status.toString().split('.').last,
+            });
+          }
+          
+          // If no real data yet, keep the mock data for demo purposes
+          if (_myDoctors.isEmpty) {
+            _myDoctors = [
+              {
+                'id': '1',
+                'Name': 'Dr. John Smith',
+                'Specialization': 'Cardiology',
+                'Hospital': 'Central Hospital',
+                'Contact': '+1 234-567-8900',
+              },
+              {
+                'id': '2',
+                'Name': 'Dr. Sarah Johnson',
+                'Specialization': 'Neurology',
+                'Hospital': 'City Medical Center',
+                'Contact': '+1 234-567-8901',
+              },
+            ];
+          }
+          
+          if (_myAppointments.isEmpty) {
+            _myAppointments = [
+              {
+                'id': '1',
+                'Doctor': 'Dr. Smith',
+                'Date': DateTime.now().add(const Duration(days: 2)),
+                'Time': '10:30 AM',
+                'Type': 'Checkup',
+                'Status': 'Scheduled',
+              },
+              {
+                'id': '2',
+                'Doctor': 'Dr. Johnson',
+                'Date': DateTime.now().add(const Duration(days: 7)),
+                'Time': '2:15 PM',
+                'Type': 'Follow-up',
+                'Status': 'Scheduled',
+              },
+            ];
+          }
         }
       }
-
-      // Mock data for now
-      _myAppointments = [
-        {
-          'id': '1',
-          'Doctor': 'Dr. Smith',
-          'Date': DateTime.now().add(const Duration(days: 2)),
-          'Time': '10:30 AM',
-          'Type': 'Checkup',
-          'Status': 'Scheduled',
-        },
-        {
-          'id': '2',
-          'Doctor': 'Dr. Johnson',
-          'Date': DateTime.now().add(const Duration(days: 7)),
-          'Time': '2:15 PM',
-          'Type': 'Follow-up',
-          'Status': 'Scheduled',
-        },
-      ];
-
-      _myDoctors = [
-        {
-          'id': '1',
-          'Name': 'Dr. John Smith',
-          'Specialization': 'Cardiology',
-          'Hospital': 'Central Hospital',
-          'Contact': '+1 234-567-8900',
-        },
-        {
-          'id': '2',
-          'Name': 'Dr. Sarah Johnson',
-          'Specialization': 'Neurology',
-          'Hospital': 'City Medical Center',
-          'Contact': '+1 234-567-8901',
-        },
-      ];
-
-      _myPrescriptions = [
-        {
-          'id': '1',
-          'Medication': 'Amoxicillin',
-          'Dosage': '500mg',
-          'Instructions': 'Take 3 times daily after meals',
-          'Prescribed': DateTime.now().subtract(const Duration(days: 5)),
-          'Doctor': 'Dr. Smith',
-        },
-        {
-          'id': '2',
-          'Medication': 'Ibuprofen',
-          'Dosage': '200mg',
-          'Instructions': 'Take as needed for pain, not exceeding 6 tablets per day',
-          'Prescribed': DateTime.now().subtract(const Duration(days: 2)),
-          'Doctor': 'Dr. Johnson',
-        },
-      ];
     } catch (e) {
       debugPrint('Error loading patient data: $e');
     } finally {
@@ -312,13 +328,13 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
           onTap: () => Navigator.pushNamed(context, '/patient/doctors'),
         ),
         DashboardCard(
-          title: 'Prescriptions',
-          value: _myPrescriptions.length.toString(),
-          icon: Icons.medication_outlined,
+          title: 'Clinical File',
+          value: '1',
+          icon: Icons.folder_outlined,
           iconColor: Colors.orange,
           backgroundColor: Colors.orange.withOpacity(0.1),
-          subtitle: 'Active medications',
-          onTap: () => Navigator.pushNamed(context, '/patient/prescriptions'),
+          subtitle: 'Patient records',
+          onTap: () => Navigator.pushNamed(context, '/patient/records'),
         ),
       ],
     );
@@ -332,7 +348,7 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
           tabs: const [
             Tab(text: 'Upcoming Appointments'),
             Tab(text: 'My Doctors'),
-            Tab(text: 'Prescriptions'),
+            Tab(text: 'Clinical File'),
           ],
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.neutral,
@@ -346,7 +362,7 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
             children: [
               _buildAppointmentsTab(),
               _buildDoctorsTab(),
-              _buildPrescriptionsTab(),
+              _buildClinicalFilesTab(),
             ],
           ),
         ),
@@ -440,7 +456,25 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
     );
   }
 
-  Widget _buildPrescriptionsTab() {
+  Widget _buildClinicalFilesTab() {
+    // Clinical files related data with only diagnostics and treatments
+    List<Map<String, dynamic>> clinicalFiles = [
+      {
+        'id': '1',
+        'Type': 'Diagnostic',
+        'Date': DateTime.now().subtract(const Duration(days: 3)),
+        'Doctor': 'Dr. Smith',
+        'Description': 'Initial diagnosis',
+      },
+      {
+        'id': '2',
+        'Type': 'Treatment',
+        'Date': DateTime.now().subtract(const Duration(days: 2)),
+        'Doctor': 'Dr. Johnson',
+        'Description': 'Follow-up treatment plan',
+      }
+    ];
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -448,13 +482,13 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Your Prescriptions',
+              'Your Clinical File',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ),
             TextButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/patient/prescriptions'),
+              onPressed: () => Navigator.pushNamed(context, '/patient/records'),
               icon: const Icon(Icons.arrow_forward),
               label: const Text('View All'),
             ),
@@ -462,19 +496,19 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
         ),
         const SizedBox(height: 16),
         Expanded(
-          child: _myPrescriptions.isEmpty
+          child: clinicalFiles.isEmpty
               ? const Center(
                   child: Text(
-                    'No active prescriptions.',
+                    'No clinical file available.',
                     style: TextStyle(color: AppColors.neutral),
                   ),
                 )
               : DataTableWidget(
-                  columns: ['Medication', 'Dosage', 'Instructions', 'Prescribed', 'Doctor'],
-                  rows: _myPrescriptions,
+                  columns: ['Type', 'Date', 'Doctor', 'Description'],
+                  rows: clinicalFiles,
                   onRowTap: (row) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Selected prescription: ${row['Medication']}'))
+                      SnackBar(content: Text('Selected clinical file entry: ${row['Type']} - ${row['Description']}'))
                     );
                   },
                 ),

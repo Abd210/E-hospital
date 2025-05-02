@@ -32,6 +32,8 @@ mixin _$ClinicalFile {
   List<MedicalNote> get medicalNotes => throw _privateConstructorUsedError;
   List<Prescription> get prescriptions => throw _privateConstructorUsedError;
   List<Surgery> get surgeries => throw _privateConstructorUsedError;
+  DischargeSummary? get dischargeSummary => throw _privateConstructorUsedError;
+  VitalsReport? get vitalsReport => throw _privateConstructorUsedError;
   DateTime? get lastUpdated => throw _privateConstructorUsedError;
   DateTime? get createdAt => throw _privateConstructorUsedError;
 
@@ -64,6 +66,8 @@ abstract class $ClinicalFileCopyWith<$Res> {
       List<MedicalNote> medicalNotes,
       List<Prescription> prescriptions,
       List<Surgery> surgeries,
+      DischargeSummary? dischargeSummary,
+      VitalsReport? vitalsReport,
       DateTime? lastUpdated,
       DateTime? createdAt});
 }
@@ -95,6 +99,8 @@ class _$ClinicalFileCopyWithImpl<$Res, $Val extends ClinicalFile>
     Object? medicalNotes = null,
     Object? prescriptions = null,
     Object? surgeries = null,
+    Object? dischargeSummary = freezed,
+    Object? vitalsReport = freezed,
     Object? lastUpdated = freezed,
     Object? createdAt = freezed,
   }) {
@@ -147,6 +153,14 @@ class _$ClinicalFileCopyWithImpl<$Res, $Val extends ClinicalFile>
           ? _value.surgeries
           : surgeries // ignore: cast_nullable_to_non_nullable
               as List<Surgery>,
+      dischargeSummary: freezed == dischargeSummary
+          ? _value.dischargeSummary
+          : dischargeSummary // ignore: cast_nullable_to_non_nullable
+              as DischargeSummary?,
+      vitalsReport: freezed == vitalsReport
+          ? _value.vitalsReport
+          : vitalsReport // ignore: cast_nullable_to_non_nullable
+              as VitalsReport?,
       lastUpdated: freezed == lastUpdated
           ? _value.lastUpdated
           : lastUpdated // ignore: cast_nullable_to_non_nullable
@@ -180,6 +194,8 @@ abstract class _$$ClinicalFileImplCopyWith<$Res>
       List<MedicalNote> medicalNotes,
       List<Prescription> prescriptions,
       List<Surgery> surgeries,
+      DischargeSummary? dischargeSummary,
+      VitalsReport? vitalsReport,
       DateTime? lastUpdated,
       DateTime? createdAt});
 }
@@ -209,6 +225,8 @@ class __$$ClinicalFileImplCopyWithImpl<$Res>
     Object? medicalNotes = null,
     Object? prescriptions = null,
     Object? surgeries = null,
+    Object? dischargeSummary = freezed,
+    Object? vitalsReport = freezed,
     Object? lastUpdated = freezed,
     Object? createdAt = freezed,
   }) {
@@ -261,6 +279,14 @@ class __$$ClinicalFileImplCopyWithImpl<$Res>
           ? _value._surgeries
           : surgeries // ignore: cast_nullable_to_non_nullable
               as List<Surgery>,
+      dischargeSummary: freezed == dischargeSummary
+          ? _value.dischargeSummary
+          : dischargeSummary // ignore: cast_nullable_to_non_nullable
+              as DischargeSummary?,
+      vitalsReport: freezed == vitalsReport
+          ? _value.vitalsReport
+          : vitalsReport // ignore: cast_nullable_to_non_nullable
+              as VitalsReport?,
       lastUpdated: freezed == lastUpdated
           ? _value.lastUpdated
           : lastUpdated // ignore: cast_nullable_to_non_nullable
@@ -289,6 +315,8 @@ class _$ClinicalFileImpl implements _ClinicalFile {
       final List<MedicalNote> medicalNotes = const [],
       final List<Prescription> prescriptions = const [],
       final List<Surgery> surgeries = const [],
+      this.dischargeSummary,
+      this.vitalsReport,
       this.lastUpdated,
       this.createdAt})
       : _vitals = vitals,
@@ -377,13 +405,17 @@ class _$ClinicalFileImpl implements _ClinicalFile {
   }
 
   @override
+  final DischargeSummary? dischargeSummary;
+  @override
+  final VitalsReport? vitalsReport;
+  @override
   final DateTime? lastUpdated;
   @override
   final DateTime? createdAt;
 
   @override
   String toString() {
-    return 'ClinicalFile(id: $id, patientId: $patientId, patientName: $patientName, medicalCondition: $medicalCondition, bloodType: $bloodType, vitals: $vitals, diagnostics: $diagnostics, treatments: $treatments, labResults: $labResults, medicalNotes: $medicalNotes, prescriptions: $prescriptions, surgeries: $surgeries, lastUpdated: $lastUpdated, createdAt: $createdAt)';
+    return 'ClinicalFile(id: $id, patientId: $patientId, patientName: $patientName, medicalCondition: $medicalCondition, bloodType: $bloodType, vitals: $vitals, diagnostics: $diagnostics, treatments: $treatments, labResults: $labResults, medicalNotes: $medicalNotes, prescriptions: $prescriptions, surgeries: $surgeries, dischargeSummary: $dischargeSummary, vitalsReport: $vitalsReport, lastUpdated: $lastUpdated, createdAt: $createdAt)';
   }
 
   @override
@@ -413,6 +445,10 @@ class _$ClinicalFileImpl implements _ClinicalFile {
                 .equals(other._prescriptions, _prescriptions) &&
             const DeepCollectionEquality()
                 .equals(other._surgeries, _surgeries) &&
+            (identical(other.dischargeSummary, dischargeSummary) ||
+                other.dischargeSummary == dischargeSummary) &&
+            (identical(other.vitalsReport, vitalsReport) ||
+                other.vitalsReport == vitalsReport) &&
             (identical(other.lastUpdated, lastUpdated) ||
                 other.lastUpdated == lastUpdated) &&
             (identical(other.createdAt, createdAt) ||
@@ -435,6 +471,8 @@ class _$ClinicalFileImpl implements _ClinicalFile {
       const DeepCollectionEquality().hash(_medicalNotes),
       const DeepCollectionEquality().hash(_prescriptions),
       const DeepCollectionEquality().hash(_surgeries),
+      dischargeSummary,
+      vitalsReport,
       lastUpdated,
       createdAt);
 
@@ -468,6 +506,8 @@ abstract class _ClinicalFile implements ClinicalFile {
       final List<MedicalNote> medicalNotes,
       final List<Prescription> prescriptions,
       final List<Surgery> surgeries,
+      final DischargeSummary? dischargeSummary,
+      final VitalsReport? vitalsReport,
       final DateTime? lastUpdated,
       final DateTime? createdAt}) = _$ClinicalFileImpl;
 
@@ -498,6 +538,10 @@ abstract class _ClinicalFile implements ClinicalFile {
   List<Prescription> get prescriptions;
   @override
   List<Surgery> get surgeries;
+  @override
+  DischargeSummary? get dischargeSummary;
+  @override
+  VitalsReport? get vitalsReport;
   @override
   DateTime? get lastUpdated;
   @override

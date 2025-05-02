@@ -258,6 +258,7 @@ class _DoctorManagementState extends State<DoctorManagement> {
         }
       }
     } catch (e) {
+      debugPrint('Error saving doctor: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error saving doctor: $e')),

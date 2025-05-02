@@ -19,6 +19,8 @@ class ClinicalFile with _$ClinicalFile {
     @Default([]) List<MedicalNote> medicalNotes,
     @Default([]) List<Prescription> prescriptions,
     @Default([]) List<Surgery> surgeries,
+    DischargeSummary? dischargeSummary,
+    VitalsReport? vitalsReport,
     DateTime? lastUpdated,
     DateTime? createdAt,
   }) = _ClinicalFile;
@@ -43,6 +45,12 @@ class ClinicalFile with _$ClinicalFile {
       'medicalNotes': _parseList(data['medicalNotes']),
       'prescriptions': _parseList(data['prescriptions']),
       'surgeries': _parseList(data['surgeries']),
+      'dischargeSummary': data['dischargeSummary'] != null
+          ? data['dischargeSummary'] as Map<String, dynamic>
+          : null,
+      'vitalsReport': data['vitalsReport'] != null
+          ? data['vitalsReport'] as Map<String, dynamic>
+          : null,
     });
   }
 
@@ -254,4 +262,212 @@ class FamilyHistory with _$FamilyHistory {
 
   factory FamilyHistory.fromJson(Map<String, dynamic> json) =>
       _$FamilyHistoryFromJson(json);
+}
+
+/// A class representing a discharge summary
+class DischargeSummary {
+  final String id;
+  final String summary;
+  final DateTime dischargeDate;
+  final String finalDiagnosis;
+  final String followUpInstructions;
+  final String? generatedSummary; // Computed from other fields
+  final String? patientInstructions;
+
+  DischargeSummary({
+    required this.id,
+    required this.summary,
+    required this.dischargeDate,
+    required this.finalDiagnosis,
+    required this.followUpInstructions,
+    this.generatedSummary,
+    this.patientInstructions,
+  });
+
+  /// Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'summary': summary,
+      'dischargeDate': dischargeDate.toIso8601String(),
+      'finalDiagnosis': finalDiagnosis,
+      'followUpInstructions': followUpInstructions,
+      'generatedSummary': generatedSummary,
+      'patientInstructions': patientInstructions,
+    };
+  }
+
+  /// Create from JSON
+  factory DischargeSummary.fromJson(Map<String, dynamic> json) {
+    return DischargeSummary(
+      id: json['id'] as String,
+      summary: json['summary'] as String,
+      dischargeDate: DateTime.parse(json['dischargeDate'] as String),
+      finalDiagnosis: json['finalDiagnosis'] as String,
+      followUpInstructions: json['followUpInstructions'] as String,
+      generatedSummary: json['generatedSummary'] as String?,
+      patientInstructions: json['patientInstructions'] as String?,
+    );
+  }
+
+  /// Create a copy with some fields replaced
+  DischargeSummary copyWith({
+    String? id,
+    String? summary,
+    DateTime? dischargeDate,
+    String? finalDiagnosis,
+    String? followUpInstructions,
+    String? generatedSummary,
+    String? patientInstructions,
+  }) {
+    return DischargeSummary(
+      id: id ?? this.id,
+      summary: summary ?? this.summary,
+      dischargeDate: dischargeDate ?? this.dischargeDate,
+      finalDiagnosis: finalDiagnosis ?? this.finalDiagnosis,
+      followUpInstructions: followUpInstructions ?? this.followUpInstructions,
+      generatedSummary: generatedSummary ?? this.generatedSummary,
+      patientInstructions: patientInstructions ?? this.patientInstructions,
+    );
+  }
+}
+
+/// A class representing vitals report data
+class VitalsReport {
+  final String id;
+  final double temperature;
+  final String bloodPressure;
+  final int heartRate;
+  final int respiratoryRate;
+  final DateTime recordTime;
+  final bool isAbnormal;
+
+  VitalsReport({
+    required this.id,
+    required this.temperature,
+    required this.bloodPressure,
+    required this.heartRate,
+    required this.respiratoryRate,
+    required this.recordTime,
+    this.isAbnormal = false,
+  });
+
+  /// Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'temperature': temperature,
+      'bloodPressure': bloodPressure,
+      'heartRate': heartRate,
+      'respiratoryRate': respiratoryRate,
+      'recordTime': recordTime.toIso8601String(),
+      'isAbnormal': isAbnormal,
+    };
+  }
+
+  /// Create from JSON
+  factory VitalsReport.fromJson(Map<String, dynamic> json) {
+    return VitalsReport(
+      id: json['id'] as String,
+      temperature: (json['temperature'] as num).toDouble(),
+      bloodPressure: json['bloodPressure'] as String,
+      heartRate: json['heartRate'] as int,
+      respiratoryRate: json['respiratoryRate'] as int,
+      recordTime: DateTime.parse(json['recordTime'] as String),
+      isAbnormal: json['isAbnormal'] as bool? ?? false,
+    );
+  }
+
+  /// Create a copy with some fields replaced
+  VitalsReport copyWith({
+    String? id,
+    double? temperature,
+    String? bloodPressure,
+    int? heartRate,
+    int? respiratoryRate,
+    DateTime? recordTime,
+    bool? isAbnormal,
+  }) {
+    return VitalsReport(
+      id: id ?? this.id,
+      temperature: temperature ?? this.temperature,
+      bloodPressure: bloodPressure ?? this.bloodPressure,
+      heartRate: heartRate ?? this.heartRate,
+      respiratoryRate: respiratoryRate ?? this.respiratoryRate,
+      recordTime: recordTime ?? this.recordTime,
+      isAbnormal: isAbnormal ?? this.isAbnormal,
+    );
+  }
+}
+
+/// A class representing an alert notification
+class AlertNotification {
+  final String id;
+  final String alertType;
+  final DateTime date;
+  final String status;
+  final String details;
+  final String? respondedBy;
+
+  AlertNotification({
+    required this.id,
+    required this.alertType,
+    required this.date,
+    required this.status,
+    required this.details,
+    this.respondedBy,
+  });
+
+  /// Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'alertType': alertType,
+      'date': date.toIso8601String(),
+      'status': status,
+      'details': details,
+      'respondedBy': respondedBy,
+    };
+  }
+
+  /// Create from JSON
+  factory AlertNotification.fromJson(Map<String, dynamic> json) {
+    return AlertNotification(
+      id: json['id'] as String,
+      alertType: json['alertType'] as String,
+      date: DateTime.parse(json['date'] as String),
+      status: json['status'] as String,
+      details: json['details'] as String,
+      respondedBy: json['respondedBy'] as String?,
+    );
+  }
+
+  /// Create a copy with some fields replaced
+  AlertNotification copyWith({
+    String? id,
+    String? alertType,
+    DateTime? date,
+    String? status,
+    String? details,
+    String? respondedBy,
+  }) {
+    return AlertNotification(
+      id: id ?? this.id,
+      alertType: alertType ?? this.alertType,
+      date: date ?? this.date,
+      status: status ?? this.status,
+      details: details ?? this.details,
+      respondedBy: respondedBy ?? this.respondedBy,
+    );
+  }
+
+  /// Trigger the alert
+  void triggerAlert() {
+    // Implementation
+  }
+
+  /// Respond to the alert
+  void respondToAlert() {
+    // Implementation
+  }
 } 

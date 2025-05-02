@@ -6,7 +6,11 @@ import 'package:e_hospital/screens/admin/appointment_management.dart';
 import 'package:e_hospital/screens/medic_dashboard.dart';
 import 'package:e_hospital/screens/medic/medical_record_management.dart';
 import 'package:e_hospital/screens/medic/medical_records_screen.dart';
+import 'package:e_hospital/screens/medic/doctor_profile.dart';
 import 'package:e_hospital/screens/login.dart';
+import 'package:e_hospital/screens/patient_dashboard.dart';
+import 'package:e_hospital/screens/patient/appointments_screen.dart';
+import 'package:e_hospital/screens/patient/medical_records_screen.dart';
 
 class AppRoutes {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -65,11 +69,9 @@ class AppRoutes {
     } else if (path.startsWith('/medic/patients/')) {
       final patientId = path.split('/').last;
       if (patientId.isNotEmpty && patientId != 'patients') {
+        // Patient detail page - show medical records for that patient
         return MaterialPageRoute(
-          builder: (_) => MedicDashboard(
-            initialTab: 'patients',
-            selectedPatientId: patientId,
-          ),
+          builder: (_) => MedicalRecordsScreen(patientId: patientId),
         );
       }
     } else if (path.startsWith('/medic/records/view/')) {
@@ -135,13 +137,15 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const MedicDashboard());
       
       case '/medic/patients':
-        return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'patients'));
+        // Use the MedicalRecordsScreen to show doctor's patients
+        return MaterialPageRoute(builder: (_) => const MedicalRecordsScreen());
       
       case '/medic/appointments':
+        // Use the MedicDashboard with initialTab set to appointments
         return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'appointments'));
       
       case '/medic/records':
-        // Use MedicDashboard with records tab (to be implemented in MedicDashboard)
+        // Use MedicalRecordsScreen directly
         return MaterialPageRoute(builder: (_) => const MedicalRecordsScreen());
         
       case '/medic/records/add':
@@ -150,7 +154,30 @@ class AppRoutes {
         );
       
       case '/medic/profile':
-        return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'profile'));
+        return MaterialPageRoute(builder: (_) => const DoctorProfileScreen());
+      
+      // Patient routes
+      case '/patient':
+        return MaterialPageRoute(builder: (_) => const PatientDashboard());
+      
+      case '/patient/appointments':
+        return MaterialPageRoute(builder: (_) => const PatientAppointmentsScreen());
+      
+      case '/patient/doctors':
+        return MaterialPageRoute(builder: (_) => const PatientDashboard(initialTab: 'doctors'));
+      
+      case '/patient/records':
+        // Clinical Files screen
+        return MaterialPageRoute(builder: (_) => const PatientMedicalRecordsScreen());
+      
+      case '/patient/prescriptions':
+        return MaterialPageRoute(builder: (_) => const PatientDashboard(initialTab: 'prescriptions'));
+      
+      case '/patient/lab-results':
+        return MaterialPageRoute(builder: (_) => const PatientDashboard(initialTab: 'lab-results'));
+      
+      case '/patient/profile':
+        return MaterialPageRoute(builder: (_) => const PatientDashboard(initialTab: 'profile'));
       
       // Default route (404)
       default:

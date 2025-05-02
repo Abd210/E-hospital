@@ -228,76 +228,81 @@ class FirestoreService {
     try {
       debugPrint('Getting patients for doctor with ID: $doctorId');
       
-      // First get the doctor to access their assigned patients
+      // First get the doctor document
       final doctorDoc = await _usersCollection.doc(doctorId).get();
       if (!doctorDoc.exists) {
         debugPrint('Doctor document does not exist');
         return [];
       }
       
-      // Get the raw data first
+      // Get the doctor data and extract assignedPatientIds directly
       final doctorData = doctorDoc.data() as Map<String, dynamic>?;
-      debugPrint('Doctor data: $doctorData');
-      
-      // Try multiple ways to find assigned patient IDs
-      List<String> assignedPatientIds = [];
-      
-      // 1. Try direct field
-      if (doctorData != null && doctorData.containsKey('assignedPatientIds')) {
-        final ids = doctorData['assignedPatientIds'];
-        debugPrint('Found assignedPatientIds directly in document: $ids');
-        if (ids is List) {
-          assignedPatientIds = List<String>.from(ids);
-        }
-      }
-      
-      // 2. If not found directly, try in profile field
-      if (assignedPatientIds.isEmpty && doctorData != null && 
-          doctorData.containsKey('profile') && 
-          doctorData['profile'] is Map) {
-        final profile = doctorData['profile'] as Map<String, dynamic>;
-        if (profile.containsKey('assignedPatientIds')) {
-          final ids = profile['assignedPatientIds'];
-          debugPrint('Found assignedPatientIds in profile: $ids');
-          if (ids is List) {
-            assignedPatientIds = List<String>.from(ids);
-          }
-        }
-      }
-      
-      // 3. If still not found, try using model
-      if (assignedPatientIds.isEmpty) {
-        final doctor = Doctor.fromFirestore(doctorDoc as DocumentSnapshot<Map<String, dynamic>>);
-        assignedPatientIds = doctor.assignedPatientIds;
-        debugPrint('Found assignedPatientIds through model: $assignedPatientIds');
-      }
-      
-      if (assignedPatientIds.isEmpty) {
-        debugPrint('No assigned patients found for doctor');
+      if (doctorData == null) {
+        debugPrint('Doctor data is null');
         return [];
       }
       
-      debugPrint('Found ${assignedPatientIds.length} assigned patient IDs: $assignedPatientIds');
+      // Get assigned patient IDs with fallbacks
+      List<dynamic> rawIds = [];
       
-      // Get all assigned patients
+      // Check if assignedPatientIds exists directly in the document
+      if (doctorData.containsKey('assignedPatientIds')) {
+        rawIds = doctorData['assignedPatientIds'] ?? [];
+      } 
+      // If not, check in profile
+      else if (doctorData.containsKey('profile') && 
+               doctorData['profile'] is Map<String, dynamic>) {
+        final profile = doctorData['profile'] as Map<String, dynamic>;
+        if (profile.containsKey('assignedPatientIds')) {
+          rawIds = profile['assignedPatientIds'] ?? [];
+        }
+      }
+      
+      // Convert to List<String> and filter out any non-string values
+      final assignedPatientIds = <String>[];
+      for (final id in rawIds) {
+        if (id is String) {
+          assignedPatientIds.add(id);
+        }
+      }
+      
+      debugPrint('Found ${assignedPatientIds.length} assigned patient IDs');
+      
+      if (assignedPatientIds.isEmpty) {
+        return [];
+      }
+      
+      // Get all assigned patients in one batch for efficiency
       final patients = <Patient>[];
-      for (final patientId in assignedPatientIds) {
+      
+      // Process in smaller batches if there are many patients
+      for (int i = 0; i < assignedPatientIds.length; i += 10) {
+        // Get current batch
+        final endIndex = (i + 10 < assignedPatientIds.length) 
+            ? i + 10 
+            : assignedPatientIds.length;
+        final batch = assignedPatientIds.sublist(i, endIndex);
+        
+        // Query for this batch of patients
         try {
-          final patientDoc = await _usersCollection.doc(patientId).get();
-          if (patientDoc.exists) {
-            final userData = patientDoc.data() as Map<String, dynamic>?;
-            if (userData != null && (userData['role'] == 'patient' || userData['role'] == UserRole.patient.toString())) {
-              final user = User.fromFirestore(patientDoc as DocumentSnapshot<Map<String, dynamic>>);
+          // Use in query for efficiency
+          final querySnapshot = await _usersCollection
+              .where(FieldPath.documentId, whereIn: batch)
+              .where('role', isEqualTo: 'patient')
+              .get();
+          
+          // Convert to Patient objects
+          for (final doc in querySnapshot.docs) {
+            try {
+              final user = User.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
               patients.add(Patient.fromUser(user));
-              debugPrint('Added patient: ${user.name} (${user.id})');
-            } else {
-              debugPrint('Skipping non-patient user: $patientId, role: ${userData?['role']}');
+              debugPrint('Added patient: ${user.name}');
+            } catch (e) {
+              debugPrint('Error converting patient doc ${doc.id}: $e');
             }
-          } else {
-            debugPrint('Patient document does not exist: $patientId');
           }
         } catch (e) {
-          debugPrint('Error getting patient $patientId: $e');
+          debugPrint('Error querying batch of patients: $e');
         }
       }
       
@@ -672,12 +677,42 @@ class FirestoreService {
           ? diagnostic.copyWith(id: _uuid.v4())
           : diagnostic;
       
-      await _clinicalFilesCollection.doc(patientId).update({
-        'diagnostics': FieldValue.arrayUnion([diagnosticWithId.toJson()]),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
+      // Check if clinical file exists
+      final docSnapshot = await _clinicalFilesCollection.doc(patientId).get();
       
-      return true;
+      if (!docSnapshot.exists) {
+        // Get patient name
+        final patientDoc = await _usersCollection.doc(patientId).get();
+        String patientName = 'Patient';
+        if (patientDoc.exists) {
+          final patientData = patientDoc.data() as Map<String, dynamic>?;
+          patientName = patientData?['name'] ?? 'Patient';
+        }
+        
+        // Create clinical file first
+        await _clinicalFilesCollection.doc(patientId).set({
+          'patientId': patientId,
+          'patientName': patientName,
+          'diagnostics': [diagnosticWithId.toJson()],
+          'treatments': [],
+          'labResults': [],
+          'medicalNotes': [],
+          'prescriptions': [],
+          'surgeries': [],
+          'lastUpdated': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        return true;
+      } else {
+        // Document exists, update it
+        await _clinicalFilesCollection.doc(patientId).update({
+          'diagnostics': FieldValue.arrayUnion([diagnosticWithId.toJson()]),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        
+        return true;
+      }
     } catch (e) {
       debugPrint('Error adding diagnostic: $e');
       return false;
@@ -691,12 +726,42 @@ class FirestoreService {
           ? treatment.copyWith(id: _uuid.v4())
           : treatment;
       
-      await _clinicalFilesCollection.doc(patientId).update({
-        'treatments': FieldValue.arrayUnion([treatmentWithId.toJson()]),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
+      // Check if clinical file exists
+      final docSnapshot = await _clinicalFilesCollection.doc(patientId).get();
       
-      return true;
+      if (!docSnapshot.exists) {
+        // Get patient name
+        final patientDoc = await _usersCollection.doc(patientId).get();
+        String patientName = 'Patient';
+        if (patientDoc.exists) {
+          final patientData = patientDoc.data() as Map<String, dynamic>?;
+          patientName = patientData?['name'] ?? 'Patient';
+        }
+        
+        // Create clinical file first
+        await _clinicalFilesCollection.doc(patientId).set({
+          'patientId': patientId,
+          'patientName': patientName,
+          'diagnostics': [],
+          'treatments': [treatmentWithId.toJson()],
+          'labResults': [],
+          'medicalNotes': [],
+          'prescriptions': [],
+          'surgeries': [],
+          'lastUpdated': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        return true;
+      } else {
+        // Document exists, update it
+        await _clinicalFilesCollection.doc(patientId).update({
+          'treatments': FieldValue.arrayUnion([treatmentWithId.toJson()]),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        
+        return true;
+      }
     } catch (e) {
       debugPrint('Error adding treatment: $e');
       return false;
@@ -775,6 +840,119 @@ class FirestoreService {
       return true;
     } catch (e) {
       debugPrint('Error adding surgery: $e');
+      return false;
+    }
+  }
+  
+  /// Add or update a discharge summary to a patient's clinical file
+  static Future<bool> updateDischargeSummary(String patientId, DischargeSummary dischargeSummary) async {
+    try {
+      final summaryWithId = dischargeSummary.id.isEmpty
+          ? dischargeSummary.copyWith(id: _uuid.v4())
+          : dischargeSummary;
+      
+      // Check if clinical file exists
+      final docSnapshot = await _clinicalFilesCollection.doc(patientId).get();
+      
+      if (!docSnapshot.exists) {
+        // Get patient name
+        final patientDoc = await _usersCollection.doc(patientId).get();
+        String patientName = 'Patient';
+        if (patientDoc.exists) {
+          final patientData = patientDoc.data() as Map<String, dynamic>?;
+          patientName = patientData?['name'] ?? 'Patient';
+        }
+        
+        // Create clinical file first
+        await _clinicalFilesCollection.doc(patientId).set({
+          'patientId': patientId,
+          'patientName': patientName,
+          'diagnostics': [],
+          'treatments': [],
+          'labResults': [],
+          'medicalNotes': [],
+          'prescriptions': [],
+          'surgeries': [],
+          'dischargeSummary': summaryWithId.toJson(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        return true;
+      } else {
+        // Document exists, update it
+        await _clinicalFilesCollection.doc(patientId).update({
+          'dischargeSummary': summaryWithId.toJson(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error updating discharge summary: $e');
+      return false;
+    }
+  }
+  
+  /// Delete a discharge summary from a patient's clinical file
+  static Future<bool> deleteDischargeSummary(String patientId) async {
+    try {
+      await _clinicalFilesCollection.doc(patientId).update({
+        'dischargeSummary': FieldValue.delete(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting discharge summary: $e');
+      return false;
+    }
+  }
+  
+  /// Add or update a vitals report to a patient's clinical file
+  static Future<bool> updateVitalsReport(String patientId, VitalsReport vitalsReport) async {
+    try {
+      final reportWithId = vitalsReport.id.isEmpty
+          ? vitalsReport.copyWith(id: _uuid.v4())
+          : vitalsReport;
+      
+      await _clinicalFilesCollection.doc(patientId).update({
+        'vitalsReport': reportWithId.toJson(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      // If there's an abnormal vitals report, create an alert notification
+      if (vitalsReport.isAbnormal) {
+        final alertNotification = {
+          'id': _uuid.v4(),
+          'userId': patientId,
+          'type': 'abnormal_vitals',
+          'message': 'Patient has abnormal vital signs. Please check immediately.',
+          'timestamp': FieldValue.serverTimestamp(),
+          'read': false,
+        };
+        
+        await _notificationsCollection.add(alertNotification);
+      }
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error updating vitals report: $e');
+      return false;
+    }
+  }
+  
+  /// Delete a vitals report from a patient's clinical file
+  static Future<bool> deleteVitalsReport(String patientId) async {
+    try {
+      await _clinicalFilesCollection.doc(patientId).update({
+        'vitalsReport': FieldValue.delete(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting vitals report: $e');
       return false;
     }
   }
@@ -990,6 +1168,39 @@ class FirestoreService {
       
       final assignedPatientIds = List<String>.from(doctorData['assignedPatientIds'] ?? []);
       
+      // Get patient details for the dashboard
+      List<Map<String, dynamic>> patientList = [];
+      if (assignedPatientIds.isNotEmpty) {
+        try {
+          // Process patients in batches to avoid large queries
+          for (int i = 0; i < assignedPatientIds.length; i += 10) {
+            final endIndex = (i + 10 < assignedPatientIds.length) 
+                ? i + 10 
+                : assignedPatientIds.length;
+            final batchIds = assignedPatientIds.sublist(i, endIndex);
+            
+            final patientsSnapshot = await _usersCollection
+                .where(FieldPath.documentId, whereIn: batchIds)
+                .where('role', isEqualTo: 'patient')
+                .get();
+                
+            for (final doc in patientsSnapshot.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              patientList.add({
+                'id': doc.id,
+                'name': data['name'] ?? 'Unknown',
+                'age': data['age'] ?? (data['profile'] != null ? data['profile']['age'] : 0),
+                'gender': data['gender'] ?? (data['profile'] != null ? data['profile']['gender'] : 'Unknown'),
+                'medicalCondition': data['medicalCondition'] ?? 
+                  (data['profile'] != null ? data['profile']['medicalCondition'] ?? 'N/A' : 'N/A'),
+              });
+            }
+          }
+        } catch (e) {
+          debugPrint('Error loading patient details: $e');
+        }
+      }
+      
       // Get appointments with a simpler query
       try {
         final appointmentsSnapshot = await _appointmentsCollection
@@ -1036,6 +1247,7 @@ class FirestoreService {
         // Return dashboard data
         return {
           'patientCount': assignedPatientIds.length,
+          'patientList': patientList,
           'todayAppointments': todayAppointments,
           'upcomingAppointments': limitedUpcomingAppointments,
           'appointmentCount': allAppointments.length,
@@ -1045,6 +1257,7 @@ class FirestoreService {
         // Fallback in case of query error
         return {
           'patientCount': assignedPatientIds.length,
+          'patientList': patientList,
           'todayAppointments': [],
           'upcomingAppointments': [],
           'appointmentCount': 0,
