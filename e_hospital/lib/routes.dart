@@ -7,6 +7,7 @@ import 'package:e_hospital/screens/medic_dashboard.dart';
 import 'package:e_hospital/screens/medic/medical_record_management.dart';
 import 'package:e_hospital/screens/medic/medical_records_screen.dart';
 import 'package:e_hospital/screens/medic/doctor_profile.dart';
+import 'package:e_hospital/screens/medic/my_patients_screen.dart';
 import 'package:e_hospital/screens/login.dart';
 import 'package:e_hospital/screens/patient_dashboard.dart';
 import 'package:e_hospital/screens/patient/appointments_screen.dart';
@@ -17,6 +18,16 @@ class AppRoutes {
     final args = settings.arguments as Map<String, dynamic>? ?? {};
     final path = settings.name ?? '';
 
+    // Check exact match for '/medic/patients' first
+    if (path == '/medic/patients') {
+      return MaterialPageRoute(builder: (_) => const MyPatientsScreen());
+    }
+    
+    // Add a new route for '/medic/my-patients'
+    if (path == '/medic/my-patients') {
+      return MaterialPageRoute(builder: (_) => const MyPatientsScreen());
+    }
+    
     // Admin routes with IDs
     if (path.startsWith('/admin/doctors/view/')) {
       final doctorId = path.split('/').last;
@@ -67,9 +78,20 @@ class AppRoutes {
         ),
       );
     } else if (path.startsWith('/medic/patients/')) {
-      final patientId = path.split('/').last;
-      if (patientId.isNotEmpty && patientId != 'patients') {
+      // Only match if there's something after the '/medic/patients/' prefix
+      final segments = path.split('/');
+      if (segments.length > 3 && segments[3].isNotEmpty) {
+        final patientId = segments[3];
         // Patient detail page - show medical records for that patient
+        return MaterialPageRoute(
+          builder: (_) => MedicalRecordsScreen(patientId: patientId),
+        );
+      }
+    } else if (path.startsWith('/medic/records/') && !path.startsWith('/medic/records/view/') && !path.startsWith('/medic/records/edit/')) {
+      // Handle '/medic/records/{patientId}' path
+      final segments = path.split('/');
+      if (segments.length > 3 && segments[3].isNotEmpty) {
+        final patientId = segments[3];
         return MaterialPageRoute(
           builder: (_) => MedicalRecordsScreen(patientId: patientId),
         );
@@ -135,10 +157,6 @@ class AppRoutes {
       // Medic routes
       case '/medic':
         return MaterialPageRoute(builder: (_) => const MedicDashboard());
-      
-      case '/medic/patients':
-        // Use the MedicalRecordsScreen to show doctor's patients
-        return MaterialPageRoute(builder: (_) => const MedicalRecordsScreen());
       
       case '/medic/appointments':
         // Use the MedicDashboard with initialTab set to appointments

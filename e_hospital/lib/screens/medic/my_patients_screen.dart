@@ -197,7 +197,7 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
   void _viewPatientRecords(Map<String, dynamic> patient) {
     Navigator.pushNamed(
       context,
-      '/medic/patients/${patient['id']}',
+      '/medic/records/${patient['id']}',
     ).then((_) {
       // Refresh when returning
       final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
@@ -282,7 +282,7 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
     return Row(
       children: [
         AppSidebar(
-          currentPath: '/medic/patients',
+          currentPath: '/medic/my-patients',
           userRole: 'medicalPersonnel',
           userName: _doctorName,
           userEmail: _doctorEmail,
@@ -339,7 +339,7 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
       ),
       drawer: Drawer(
         child: AppSidebar(
-          currentPath: '/medic/patients',
+          currentPath: '/medic/my-patients',
           userRole: 'medicalPersonnel',
           userName: _doctorName,
           userEmail: _doctorEmail,

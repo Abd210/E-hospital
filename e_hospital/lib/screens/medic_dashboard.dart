@@ -11,7 +11,7 @@ class MedicDashboard extends StatefulWidget {
   final String initialTab;
   
   const MedicDashboard({
-    Key? key,
+    Key? key, 
     this.initialTab = '',
   }) : super(key: key);
 
@@ -32,7 +32,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
   int _patientCount = 0;
   List<Map<String, dynamic>> _todayAppointments = [];
   List<Map<String, dynamic>> _upcomingAppointments = [];
-
+  
   @override
   void initState() {
     super.initState();
@@ -49,12 +49,12 @@ class _MedicDashboardState extends State<MedicDashboard> {
       });
     }
   }
-
+  
   Future<void> _loadDashboardData() async {
     setState(() {
       _isLoading = true;
     });
-
+    
     try {
       final userId = auth.FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
@@ -82,14 +82,14 @@ class _MedicDashboardState extends State<MedicDashboard> {
           // Process today's appointments
           final todayAppointments = dashboardData['todayAppointments'] as List<dynamic>? ?? [];
           _todayAppointments = todayAppointments.map((appointment) {
-              return {
+            return {
               'id': appointment['id'],
               'Patient': appointment['patientName'] ?? 'Unknown Patient',
               'Time': appointment['time'] ?? 'N/A',
               'Purpose': appointment['purpose'] ?? 'Consultation',
               'Status': appointment['status'] ?? 'scheduled',
-              };
-            }).toList();
+            };
+          }).toList();
           
           // Process upcoming appointments
           final upcomingAppointments = dashboardData['upcomingAppointments'] as List<dynamic>? ?? [];
@@ -103,15 +103,15 @@ class _MedicDashboardState extends State<MedicDashboard> {
               'Purpose': appointment['purpose'] ?? 'Consultation',
               'Status': appointment['status'] ?? 'scheduled',
             };
-            }).toList();
+          }).toList();
         });
-          }
-        } catch (e) {
+      }
+    } catch (e) {
       debugPrint('Error loading dashboard data: $e');
       if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     } finally {
       if (mounted) {
@@ -127,7 +127,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
       _currentTab = tab;
     });
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -254,10 +254,10 @@ class _MedicDashboardState extends State<MedicDashboard> {
   Widget _buildDashboardContent() {
     return SingleChildScrollView(
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           _buildWelcomeSection(),
-        const SizedBox(height: 24),
+          const SizedBox(height: 24),
           _buildStatisticsSection(),
           const SizedBox(height: 24),
           _buildTodayAppointmentsSection(),
@@ -270,9 +270,9 @@ class _MedicDashboardState extends State<MedicDashboard> {
   
   Widget _buildAppointmentsContent() {
     return SingleChildScrollView(
-        child: Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        children: [
           Card(
             elevation: 2,
             child: Padding(
@@ -280,7 +280,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-            const Text(
+                  const Text(
                     'All Appointments',
                     style: TextStyle(
                       fontSize: 18,
@@ -289,16 +289,16 @@ class _MedicDashboardState extends State<MedicDashboard> {
                   ),
                   const SizedBox(height: 16),
                   Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () {
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () {
                           // Navigate to the appointment creation screen
                           Navigator.pushNamed(context, '/admin/appointments/add').then((_) {
                             // Refresh appointments list after returning
                             _loadDashboardData();
                           });
-                  },
-                  icon: const Icon(Icons.add),
+                        },
+                        icon: const Icon(Icons.add),
                         label: const Text('New Appointment'),
                       ),
                       const SizedBox(width: 16),
@@ -394,18 +394,18 @@ class _MedicDashboardState extends State<MedicDashboard> {
                 ],
               ),
             ),
-            ),
-          ],
-        ),
-      );
-    }
+          ),
+        ],
+      ),
+    );
+  }
   
   Widget _buildPatientsContent() {
     // Get the patient list from the dashboard data
     final patientList = _dashboardData != null && _dashboardData!.containsKey('patientList') 
         ? (_dashboardData!['patientList'] as List<dynamic>? ?? []) 
         : <dynamic>[];
-
+    
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -415,27 +415,27 @@ class _MedicDashboardState extends State<MedicDashboard> {
             elevation: 2,
             child: Padding(
               padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
                       const Text(
                         'My Patients',
                         style: TextStyle(
                           fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.add),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add),
                         label: const Text('Add Patient'),
                         onPressed: _addNewPatient,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   Text(
                     'Total Patients: $_patientCount',
                     style: const TextStyle(
@@ -524,14 +524,14 @@ class _MedicDashboardState extends State<MedicDashboard> {
                         ),
                       ),
                     );
-              },
-            ),
+                  },
+                ),
           ),
         ],
       ),
     );
   }
-
+  
   Widget _buildWelcomeSection() {
     return Card(
       elevation: 2,
@@ -539,7 +539,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          children: [
             Row(
               children: [
                 CircleAvatar(
@@ -618,9 +618,9 @@ class _MedicDashboardState extends State<MedicDashboard> {
                   label: 'My Profile',
                   onPressed: () {
                     Navigator.pushNamed(context, '/medic/profile');
-                },
-              ),
-            ],
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -702,10 +702,10 @@ class _MedicDashboardState extends State<MedicDashboard> {
             ),
           ],
         ),
-        ),
-      );
-    }
-
+      ),
+    );
+  }
+  
   Widget _buildStatCard({
     required String title,
     required String value,
@@ -718,13 +718,13 @@ class _MedicDashboardState extends State<MedicDashboard> {
         color: color.withOpacity(0.1),
         child: Padding(
           padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
                     title,
                     style: TextStyle(
                       fontSize: 14,
@@ -735,25 +735,25 @@ class _MedicDashboardState extends State<MedicDashboard> {
                     icon,
                     color: color,
                     size: 20,
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 16),
               Text(
                 value,
                 style: TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.bold,
                   color: color,
-            ),
-          ),
-        ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-
+  
   Widget _buildTodayAppointmentsSection() {
     return Card(
       elevation: 2,
@@ -773,7 +773,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                   ),
                 ),
                 TextButton.icon(
-              onPressed: () {
+                  onPressed: () {
                     _switchTab('appointments');
                   },
                   icon: const Icon(Icons.arrow_forward),
@@ -868,7 +868,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -940,15 +940,15 @@ class _MedicDashboardState extends State<MedicDashboard> {
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+              children: [
                 const SizedBox(height: 4),
                 Text('Date: ${appointment['Date']}'),
                 Text('Time: ${appointment['Time']}'),
                 Text('Purpose: ${appointment['Purpose']}'),
               ],
             ),
-                          trailing: Chip(
-                            label: Text(
+            trailing: Chip(
+              label: Text(
                 _getStatusDisplayText(appointment['Status'] as String),
                 style: const TextStyle(
                   color: Colors.white,
@@ -956,14 +956,14 @@ class _MedicDashboardState extends State<MedicDashboard> {
                 ),
               ),
               backgroundColor: _getStatusColor(appointment['Status'] as String),
-                          ),
-                          onTap: () {
-                            Navigator.pushNamed(
-                              context, 
+            ),
+            onTap: () {
+              Navigator.pushNamed(
+                context,
                 '/medic/appointments/view/${appointment['id']}',
-                        );
-                      },
-                    ),
+              );
+            },
+          ),
         );
       }).toList(),
     );
@@ -983,7 +983,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
         return Colors.grey;
     }
   }
-
+  
   String _getStatusDisplayText(String status) {
     // Capitalize first letter
     if (status.isEmpty) return '';
@@ -1015,17 +1015,17 @@ class _MedicDashboardState extends State<MedicDashboard> {
         builder: (context) => AlertDialog(
           title: Text(patient['name'] ?? 'Patient Details'),
           content: SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-        children: [
+              children: [
                 _buildDetailRow('ID', patient['id']),
                 _buildDetailRow('Name', patient['name']),
                 _buildDetailRow('Age', patient['age']?.toString() ?? 'N/A'),
                 _buildDetailRow('Gender', patient['gender'] ?? 'N/A'),
                 _buildDetailRow('Medical Condition', patient['medicalCondition'] ?? 'None'),
                 const Divider(),
-                  const SizedBox(height: 16),
+                const SizedBox(height: 16),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.folder_open),
                   label: const Text('View Medical Records'),
@@ -1037,17 +1037,17 @@ class _MedicDashboardState extends State<MedicDashboard> {
                     minimumSize: const Size(double.infinity, 40),
                   ),
                 ),
-                ],
-              ),
+              ],
             ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+            ),
+          ],
+        ),
+      );
     }
   }
   
@@ -1061,8 +1061,8 @@ class _MedicDashboardState extends State<MedicDashboard> {
             width: 120,
             child: Text(
               '$label:',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
