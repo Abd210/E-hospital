@@ -43,7 +43,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       // Get recent appointments
       final appointments = await FirestoreService.getAllAppointments();
       _recentAppointments = appointments
-          .take(5)
           .map((appointment) => {
                 'id': appointment.id,
                 'Patient': appointment.patientName,
@@ -59,19 +58,40 @@ class _AdminDashboardState extends State<AdminDashboard> {
       final doctors = await FirestoreService.getAllDoctors();
       _doctorsList = doctors.map((doctor) {
         final profile = doctor.profile as Map<String, dynamic>?;
+        
+        // Get patient count in this order of precedence:
+        // 1. Direct profile.patientCount field
+        // 2. Length of assignedPatientIds from metadata
+        // 3. Length of profile.assignedPatientIds array
+        int patientCount = 0;
+        
+        // 1. Check profile.patientCount first (most accurate)
+        if (profile != null && profile.containsKey('patientCount')) {
+          patientCount = profile['patientCount'] is int ? profile['patientCount'] : 0;
+        }
+        // 2. Check metadata for assignedPatientIds (top level field)
+        else if (doctor.metadata != null && doctor.metadata!.containsKey('assignedPatientIds')) {
+          final assignedPatientIds = doctor.metadata!['assignedPatientIds'] as List<dynamic>?;
+          patientCount = assignedPatientIds?.length ?? 0;
+        }
+        // 3. Fallback to profile.assignedPatientIds (legacy)
+        else if (profile != null && profile.containsKey('assignedPatientIds')) {
+          final assignedPatientIds = profile['assignedPatientIds'] as List<dynamic>?;
+          patientCount = assignedPatientIds?.length ?? 0;
+        }
+        
         return {
           'id': doctor.id,
           'Name': doctor.name,
           'Email': doctor.email,
           'Specialization': profile?['specialization'] ?? 'General',
-          'Patients': profile?['patientCount'] ?? 0,
+          'Patients': patientCount,
         };
       }).toList();
 
       // Get patients
       final patients = await FirestoreService.getAllPatients();
       _patientsList = patients
-          .take(5)
           .map((patient) => {
                 'id': patient.id,
                 'Name': patient.name,
@@ -236,12 +256,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: _loadDashboardData,
+                ),
+                const SizedBox(width: 8),
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('Add Doctor'),
               onPressed: () {
                 Navigator.pushNamed(context, '/admin/doctors/add');
               },
+                ),
+              ],
             ),
           ],
         ),
@@ -278,12 +308,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: _loadDashboardData,
+                ),
+                const SizedBox(width: 8),
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('Add Patient'),
               onPressed: () {
                 Navigator.pushNamed(context, '/admin/patients/add');
               },
+                ),
+              ],
             ),
           ],
         ),
@@ -320,12 +360,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: _loadDashboardData,
+                ),
+                const SizedBox(width: 8),
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Create Appointment'),
+                  label: const Text('Add Appointment'),
               onPressed: () {
-                Navigator.pushNamed(context, '/admin/appointments/add');
+                    Navigator.pushNamed(
+                      context, 
+                      '/admin/appointments/add',
+                      arguments: {'initialData': {}},
+                    );
               },
+                ),
+              ],
             ),
           ],
         ),
@@ -334,13 +388,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
           columns: ['Patient', 'Doctor', 'Date', 'Time', 'Status', 'Type'],
           rows: _recentAppointments,
           onRowTap: (row) {
-            Navigator.pushNamed(context, '/admin/appointments/view/${row['id']}');
+            _showAppointmentOptions(context, row);
           },
           onEdit: (row) {
-            Navigator.pushNamed(context, '/admin/appointments/edit/${row['id']}');
+            Navigator.pushNamed(
+              context, 
+              '/admin/appointments/edit/${row['id']}',
+            );
           },
           onDelete: (row) {
-            _showDeleteConfirmation(context, 'appointment', row['id'], '${row['Patient']} with ${row['Doctor']}');
+            _showDeleteConfirmation(context, 'appointment', row['id'], '${row['Patient']} appointment');
           },
           maxHeight: 600,
         ),
@@ -408,12 +465,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
                   const Text(
                     'Welcome to E-Hospital Admin Dashboard',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Refresh Dashboard',
+                        onPressed: _loadDashboardData,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -462,6 +529,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final doctorCount = _dashboardData['doctorCount'] ?? 0;
     final patientCount = _dashboardData['patientCount'] ?? 0;
     final appointmentCount = _dashboardData['totalAppointments'] ?? 0;
+    final pendingAppointments = _dashboardData['pendingAppointments'] ?? 0;
+    final todayAppointments = _dashboardData['todayAppointments'] ?? 0;
+    final completedAppointments = _dashboardData['completedAppointments'] ?? 0;
 
     return GridView.count(
       crossAxisCount: ResponsiveLayout.isDesktop(context) ? 3 : 2,
@@ -476,8 +546,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           icon: Icons.medical_services_outlined,
           iconColor: AppColors.primary,
           backgroundColor: AppColors.primary.withOpacity(0.1),
-          subtitle: '+3 new this month',
-          showIncreaseIcon: true,
+          subtitle: 'Medical Staff',
+          showIncreaseIcon: false,
           onTap: () => Navigator.pushNamed(context, '/admin/doctors'),
         ),
         DashboardCard(
@@ -486,8 +556,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           icon: Icons.people_outline,
           iconColor: AppColors.secondary,
           backgroundColor: AppColors.secondary.withOpacity(0.1),
-          subtitle: '+12 new this month',
-          showIncreaseIcon: true,
+          subtitle: 'Registered Patients',
+          showIncreaseIcon: false,
           onTap: () => Navigator.pushNamed(context, '/admin/patients'),
         ),
         DashboardCard(
@@ -496,7 +566,34 @@ class _AdminDashboardState extends State<AdminDashboard> {
           icon: Icons.calendar_today_outlined,
           iconColor: Colors.purple,
           backgroundColor: Colors.purple.withOpacity(0.1),
-          subtitle: '${_dashboardData['todayAppointments'] ?? 0} today',
+          subtitle: '$todayAppointments today',
+          onTap: () => Navigator.pushNamed(context, '/admin/appointments'),
+        ),
+        DashboardCard(
+          title: 'Pending',
+          value: pendingAppointments.toString(),
+          icon: Icons.access_time_outlined, 
+          iconColor: Colors.orange,
+          backgroundColor: Colors.orange.withOpacity(0.1),
+          subtitle: 'Awaiting Appointments',
+          onTap: () => Navigator.pushNamed(context, '/admin/appointments'),
+        ),
+        DashboardCard(
+          title: 'Completed',
+          value: completedAppointments.toString(),
+          icon: Icons.check_circle_outline,
+          iconColor: Colors.green,
+          backgroundColor: Colors.green.withOpacity(0.1),
+          subtitle: 'Completed Appointments',
+          onTap: () => Navigator.pushNamed(context, '/admin/appointments'),
+        ),
+        DashboardCard(
+          title: 'Today',
+          value: todayAppointments.toString(),
+          icon: Icons.today_outlined,
+          iconColor: Colors.blue,
+          backgroundColor: Colors.blue.withOpacity(0.1),
+          subtitle: "Today's Appointments",
           onTap: () => Navigator.pushNamed(context, '/admin/appointments'),
         ),
       ],
@@ -516,10 +613,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh Appointments',
+                  onPressed: _loadDashboardData,
+            ),
             TextButton.icon(
               onPressed: () => Navigator.pushNamed(context, '/admin/appointments'),
               icon: const Icon(Icons.arrow_forward),
               label: const Text('View All'),
+                ),
+              ],
             ),
           ],
         ),
@@ -542,10 +648,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh Doctors',
+                  onPressed: _loadDashboardData,
+            ),
             TextButton.icon(
               onPressed: () => Navigator.pushNamed(context, '/admin/doctors'),
               icon: const Icon(Icons.arrow_forward),
               label: const Text('View All'),
+                ),
+              ],
             ),
           ],
         ),
@@ -568,10 +683,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh Patients',
+                  onPressed: _loadDashboardData,
+            ),
             TextButton.icon(
               onPressed: () => Navigator.pushNamed(context, '/admin/patients'),
               icon: const Icon(Icons.arrow_forward),
               label: const Text('View All'),
+                ),
+              ],
             ),
           ],
         ),
@@ -982,5 +1106,51 @@ class _AdminDashboardState extends State<AdminDashboard> {
       default:
         return Colors.grey;
     }
+  }
+
+  void _showAppointmentOptions(BuildContext context, Map<String, dynamic> appointment) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Appointment: ${appointment['Patient']} with ${appointment['Doctor']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.visibility),
+                title: const Text('View Appointment Details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin/appointments/view/${appointment['id']}');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Edit Appointment'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin/appointments/edit/${appointment['id']}');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete Appointment', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteConfirmation(context, 'appointment', appointment['id'], '${appointment['Patient']} appointment');
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

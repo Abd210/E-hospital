@@ -317,9 +317,34 @@ class FirestoreService {
   /// Assign patient to doctor
   static Future<bool> assignPatientToDoctor(String patientId, String doctorId) async {
     try {
+      // Get current doctor data to check where assignedPatientIds are stored
+      final doctorDoc = await _usersCollection.doc(doctorId).get();
+      final doctorData = doctorDoc.data() as Map<String, dynamic>?;
+      
+      if (doctorData == null || !doctorDoc.exists) {
+        debugPrint('Doctor not found when assigning patient');
+        return false;
+      }
+      
+      // Update the top-level assignedPatientIds field
       await _usersCollection.doc(doctorId).update({
         'assignedPatientIds': FieldValue.arrayUnion([patientId]),
       });
+      
+      // Also update the patient count in doctor profile for quick reference in UI
+      // Count patients in assignedPatientIds array
+      final updatedDoc = await _usersCollection.doc(doctorId).get();
+      final updatedData = updatedDoc.data() as Map<String, dynamic>?;
+      
+      if (updatedData != null && updatedData.containsKey('assignedPatientIds')) {
+        final assignedIds = updatedData['assignedPatientIds'] as List<dynamic>?;
+        final patientCount = assignedIds?.length ?? 0;
+        
+        // Update the profile.patientCount field
+        await _usersCollection.doc(doctorId).update({
+          'profile.patientCount': patientCount,
+        });
+      }
       
       return true;
     } catch (e) {
@@ -331,9 +356,25 @@ class FirestoreService {
   /// Remove patient from doctor
   static Future<bool> removePatientFromDoctor(String patientId, String doctorId) async {
     try {
+      // Update the top-level assignedPatientIds field
       await _usersCollection.doc(doctorId).update({
         'assignedPatientIds': FieldValue.arrayRemove([patientId]),
       });
+      
+      // Also update the patient count in doctor profile
+      // Count patients in assignedPatientIds array after removal
+      final updatedDoc = await _usersCollection.doc(doctorId).get();
+      final updatedData = updatedDoc.data() as Map<String, dynamic>?;
+      
+      if (updatedData != null && updatedData.containsKey('assignedPatientIds')) {
+        final assignedIds = updatedData['assignedPatientIds'] as List<dynamic>?;
+        final patientCount = assignedIds?.length ?? 0;
+        
+        // Update the profile.patientCount field
+        await _usersCollection.doc(doctorId).update({
+          'profile.patientCount': patientCount,
+        });
+      }
       
       return true;
     } catch (e) {
@@ -429,7 +470,7 @@ class FirestoreService {
     try {
       debugPrint('Getting appointments for patient with ID: $patientId');
       
-      // Use a more explicit query to ensure we're getting all appointments
+      // Use a more explicit query with no limit to ensure we're getting all appointments
       final querySnapshot = await _appointmentsCollection
           .where('patientId', isEqualTo: patientId)
           .get();
@@ -442,12 +483,36 @@ class FirestoreService {
         try {
           final appointment = Appointment.fromFirestore(doc);
           appointments.add(appointment);
+          debugPrint('Successfully parsed appointment ${appointment.id}');
         } catch (e) {
           debugPrint('Error parsing appointment doc ${doc.id}: $e');
+          // Try a more robust approach to parse the document
+          try {
+            final data = doc.data() as Map<String, dynamic>;
+            // Create a minimal valid appointment to avoid losing data
+            final fallbackAppointment = Appointment(
+              id: doc.id,
+              patientId: data['patientId'] ?? patientId,
+              patientName: data['patientName'] ?? 'Unknown',
+              doctorId: data['doctorId'] ?? '',
+              doctorName: data['doctorName'] ?? 'Unknown Doctor',
+              appointmentDate: data['appointmentDate'] is Timestamp 
+                  ? (data['appointmentDate'] as Timestamp).toDate() 
+                  : DateTime.now(),
+              time: data['time'] ?? 'Unknown',
+              purpose: data['purpose'] ?? 'Unknown',
+              status: AppointmentStatus.scheduled,
+              type: AppointmentType.checkup,
+            );
+            appointments.add(fallbackAppointment);
+            debugPrint('Added fallback appointment for ${doc.id}');
+          } catch (innerError) {
+            debugPrint('Failed to create fallback appointment: $innerError');
+          }
         }
       }
       
-      debugPrint('Successfully parsed ${appointments.length} appointments');
+      debugPrint('Successfully retrieved ${appointments.length} appointments for patient');
       return appointments;
     } catch (e) {
       debugPrint('Error getting patient appointments: $e');
@@ -613,10 +678,24 @@ class FirestoreService {
   // CLINICAL FILE OPERATIONS
   
   /// Get clinical file by patient ID
-  static Future<ClinicalFile?> getClinicalFileByPatientId(String patientId) async {
+  static Future<ClinicalFile?> getClinicalFileByPatientId(String? patientId) async {
+    if (patientId == null) {
+      debugPrint('Error getting clinical file: patientId is null');
+      return null;
+    }
+    
     try {
       final doc = await _clinicalFilesCollection.doc(patientId).get();
-      if (!doc.exists) return null;
+      if (!doc.exists) {
+        debugPrint('Clinical file not found for patient ID: $patientId');
+        // Create a default clinical file and return it
+        return ClinicalFile(
+          id: patientId,
+          patientId: patientId,
+          patientName: 'Unknown Patient', // This will be updated when saving
+          lastUpdated: DateTime.now(),
+        );
+      }
       
       return ClinicalFile.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
     } catch (e) {
@@ -1166,7 +1245,31 @@ class FirestoreService {
         return {};
       }
       
-      final assignedPatientIds = List<String>.from(doctorData['assignedPatientIds'] ?? []);
+      // Look for assigned patients in both possible locations
+      List<dynamic> rawIds = [];
+      
+      // Check if assignedPatientIds exists directly in the document
+      if (doctorData.containsKey('assignedPatientIds')) {
+        rawIds = doctorData['assignedPatientIds'] ?? [];
+      } 
+      // If not, check in profile
+      else if (doctorData.containsKey('profile') && 
+               doctorData['profile'] is Map<String, dynamic>) {
+        final profile = doctorData['profile'] as Map<String, dynamic>;
+        if (profile.containsKey('assignedPatientIds')) {
+          rawIds = profile['assignedPatientIds'] ?? [];
+        }
+      }
+      
+      // Convert to List<String> and filter out any non-string values
+      final assignedPatientIds = <String>[];
+      for (final id in rawIds) {
+        if (id is String) {
+          assignedPatientIds.add(id);
+        }
+      }
+      
+      debugPrint('Found ${assignedPatientIds.length} assigned patient IDs for doctor $doctorId');
       
       // Get patient details for the dashboard
       List<Map<String, dynamic>> patientList = [];
@@ -1966,6 +2069,77 @@ class FirestoreService {
     } catch (e) {
       debugPrint('Error deleting treatment: $e');
       return false;
+    }
+  }
+  
+  /// Check if doctor is available at the specified date and time
+  static Future<bool> isDoctorAvailable(String doctorId, DateTime date, String time) async {
+    try {
+      // First check doctor schedule
+      final doctor = await getDoctorById(doctorId);
+      if (doctor == null) {
+        debugPrint('Doctor not found with ID: $doctorId');
+        return false;
+      }
+      
+      // Check if the doctor works at this time according to their schedule
+      final isInSchedule = doctor.isAvailableAt(date, time);
+      if (!isInSchedule) {
+        debugPrint('Requested time is outside doctor\'s working hours');
+        return false;
+      }
+      
+      // Now check for existing appointments to avoid double booking
+      debugPrint('Checking for conflicting appointments on ${date.toString().split(' ')[0]} at $time');
+      
+      // Query for appointments on the same date and time
+      final querySnapshot = await _appointmentsCollection
+          .where('doctorId', isEqualTo: doctorId)
+          .where('appointmentDate', isEqualTo: Timestamp.fromDate(
+              DateTime(date.year, date.month, date.day)))
+          .get();
+      
+      for (final doc in querySnapshot.docs) {
+        final appointmentData = doc.data() as Map<String, dynamic>;
+        final appointmentTime = appointmentData['time'] as String?;
+        
+        // If there's an appointment at the same time, the doctor is not available
+        if (appointmentTime == time) {
+          debugPrint('Doctor already has an appointment at this time');
+          return false;
+        }
+      }
+      
+      debugPrint('Doctor is available at the requested time');
+      return true;
+    } catch (e) {
+      debugPrint('Error checking doctor availability: $e');
+      return false;
+    }
+  }
+  
+  /// Get all existing appointments for a doctor on a specific date
+  static Future<List<String>> getDoctorAppointmentTimes(String doctorId, DateTime date) async {
+    try {
+      final querySnapshot = await _appointmentsCollection
+          .where('doctorId', isEqualTo: doctorId)
+          .where('appointmentDate', isEqualTo: Timestamp.fromDate(
+              DateTime(date.year, date.month, date.day)))
+          .get();
+      
+      final times = <String>[];
+      for (final doc in querySnapshot.docs) {
+        final appointmentData = doc.data() as Map<String, dynamic>;
+        final time = appointmentData['time'] as String?;
+        if (time != null && time.isNotEmpty) {
+          times.add(time);
+        }
+      }
+      
+      return times;
+    } catch (e) {
+      debugPrint('Error getting doctor appointment times: $e');
+      return [];
     }
   }
 }

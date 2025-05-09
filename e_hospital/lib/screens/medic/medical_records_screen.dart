@@ -68,11 +68,12 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
           final patients = await FirestoreService.getDoctorPatients(currentUserId);
           if (mounted) {
             _patientsList = patients.map((patient) {
+              final profileMap = patient.profile ?? {};
               return {
                 'id': patient.id,
                 'Name': patient.name,
-                'Age': patient.age.toString(),
-                'Gender': patient.gender,
+                'Age': (patient.age ?? 0).toString(),
+                'Gender': patient.gender ?? 'Unknown',
               };
             }).toList();
             

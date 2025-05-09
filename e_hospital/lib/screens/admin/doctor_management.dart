@@ -124,8 +124,8 @@ class _DoctorManagementState extends State<DoctorManagement> {
           'Name': patient.name,
           'Email': patient.email,
           'Phone': patient.phone ?? 'N/A',
-          'Age': patient.age.toString(),
-          'Gender': patient.gender,
+          'Age': (patient.age ?? 0).toString(),
+          'Gender': patient.gender ?? 'Unknown',
         };
       }).toList();
     } catch (e) {

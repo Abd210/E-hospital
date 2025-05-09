@@ -142,11 +142,17 @@ class Appointment with _$Appointment implements FirestoreConvertible {
       AppointmentType type = AppointmentType.checkup;
       if (data['type'] != null) {
         try {
+          // First try with exact case
+          String typeString = data['type'].toString().toLowerCase();
+          // Handle case where underscores might be present (follow_up)
+          typeString = typeString.replaceAll('_', '');
+          
+          // Try to match by ignoring underscores and case
           type = AppointmentType.values.firstWhere(
-            (e) => e.toString().split('.').last.toLowerCase() == data['type'].toString().toLowerCase(),
+            (e) => e.toString().split('.').last.toLowerCase().replaceAll('_', '') == typeString,
             orElse: () => AppointmentType.checkup,
           );
-          debugPrint('Parsed type: $type');
+          debugPrint('Parsed type: $type from ${data['type']}');
         } catch (e) {
           debugPrint('Error parsing type: $e');
         }
@@ -230,7 +236,12 @@ class Appointment with _$Appointment implements FirestoreConvertible {
     
     // Convert enum to string
     json['status'] = status.toString().split('.').last;
-    json['type'] = type.toString().split('.').last;
+    
+    // Fix the issue with appointment type conversion
+    // Handle both camelCase (followUp) and with underscore (follow_up) in the toString representation
+    final typeString = type.toString().split('.').last;
+    // Ensure correct casing for any value like "followUp" not "follow_up"
+    json['type'] = typeString;
     
     return json;
   }

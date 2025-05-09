@@ -6,6 +6,7 @@ import 'package:e_hospital/core/widgets/data_table_widget.dart';
 import 'package:e_hospital/theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:e_hospital/services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PatientDashboard extends StatefulWidget {
   final String? initialTab;
@@ -57,38 +58,48 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
           _patientEmail = userData.email;
           _patientData = userData.profile as Map<String, dynamic>? ?? {};
           
-          // Load assigned doctors
+          // Get dashboard data using the dedicated method
+          final dashboardData = await FirestoreService.getPatientDashboardData(currentUser.uid);
+          
+          // Load assigned doctors from dashboard data
           _myDoctors = [];
-          final assignedDoctors = await FirestoreService.getPatientDoctors(currentUser.uid);
-          for (final doctor in assignedDoctors) {
+          final assignedDoctors = dashboardData['assignedDoctors'] as List<dynamic>? ?? [];
+          for (final doctorData in assignedDoctors) {
+            final doctor = doctorData as Map<String, dynamic>;
+            final profile = doctor['profile'] as Map<String, dynamic>?;
+            
             _myDoctors.add({
-              'id': doctor.id,
-              'Name': doctor.name,
-              'Specialization': doctor.profile != null && doctor.profile!.containsKey('specialization') 
-                  ? doctor.profile!['specialization'] 
+              'id': doctor['id'] ?? '',
+              'Name': doctor['name'] ?? 'Unknown Doctor',
+              'Specialization': profile != null && profile.containsKey('specialization') 
+                  ? profile['specialization'] 
                   : 'General',
-              'Hospital': doctor.profile != null && doctor.profile!.containsKey('hospital') 
-                  ? doctor.profile!['hospital'] 
+              'Hospital': profile != null && profile.containsKey('hospital') 
+                  ? profile['hospital'] 
                   : 'Main Hospital',
-              'Contact': doctor.phone ?? 'N/A',
+              'Contact': doctor['phone'] ?? 'N/A',
             });
           }
           
-          // Load appointments
+          // Load appointments from dashboard data
           _myAppointments = [];
-          final appointments = await FirestoreService.getPatientUpcomingAppointments(currentUser.uid);
-          for (final appointment in appointments) {
+          final upcomingAppointments = dashboardData['upcomingAppointments'] as List<dynamic>? ?? [];
+          for (final apptData in upcomingAppointments) {
+            final appointment = apptData as Map<String, dynamic>;
+            final timestamp = appointment['appointmentDate'] as Timestamp?;
+            final appointmentDate = timestamp?.toDate() ?? DateTime.now();
+            
             _myAppointments.add({
-              'id': appointment.id,
-              'Doctor': appointment.doctorName,
-              'Date': appointment.appointmentDate,
-              'Time': appointment.time,
-              'Type': appointment.type.toString().split('.').last,
-              'Status': appointment.status.toString().split('.').last,
+              'id': appointment['id'] ?? '',
+              'Doctor': appointment['doctorName'] ?? 'Unknown Doctor',
+              'Date': appointmentDate,
+              'Time': appointment['time'] ?? 'N/A',
+              'Type': appointment['type'] ?? 'Checkup',
+              'Status': appointment['status'] ?? 'Scheduled',
             });
           }
           
-          // If no real data yet, keep the mock data for demo purposes
+          // Add mock data only if real data is empty
           if (_myDoctors.isEmpty) {
             _myDoctors = [
               {

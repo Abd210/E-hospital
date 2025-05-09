@@ -233,37 +233,252 @@ class _MedicDashboardState extends State<MedicDashboard> {
   Widget _buildCurrentTabContent() {
     switch (_currentTab) {
       case 'dashboard':
-        return _buildDashboardContent();
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: _buildDashboardContent(),
+        );
+      case 'patients':
+        return _buildPatientsContent();
       case 'appointments':
         return _buildAppointmentsContent();
-      case 'patients':
-        // For patients tab, we use a different structure to accommodate the Expanded widget
-        return Scaffold(
-          body: _buildPatientsContent(),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _addNewPatient,
-            child: const Icon(Icons.add),
-            tooltip: 'Add Patient',
-          ),
-        );
+      case 'consultations':
+        return _buildConsultationsContent();
+      case 'clinical_records':
+        return _buildClinicalRecordsContent();
+      case 'settings':
+        return _buildSettingsContent();
       default:
-        return _buildDashboardContent();
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: _buildDashboardContent(),
+        );
     }
   }
   
   Widget _buildDashboardContent() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildWelcomeSection(),
-          const SizedBox(height: 24),
-          _buildStatisticsSection(),
-          const SizedBox(height: 24),
-          _buildTodayAppointmentsSection(),
-          const SizedBox(height: 24),
-          _buildUpcomingAppointmentsSection(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Welcome, Dr. $_doctorName',
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 24),
+        
+        // Stats cards
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.people,
+                title: '$_patientCount',
+                subtitle: 'Assigned Patients',
+                color: AppColors.primary,
+                onTap: () => _switchTab('patients'),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.today,
+                title: '${_todayAppointments.length}',
+                subtitle: 'Today\'s Appointments',
+                color: AppColors.accent,
+                onTap: () => _switchTab('appointments'),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.schedule,
+                title: '${_dashboardData?['appointmentCount'] ?? 0}',
+                subtitle: 'Total Appointments',
+                color: AppColors.success,
+                onTap: () => _switchTab('appointments'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        
+        // Today's appointments
+        const Text(
+          'Today\'s Appointments',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _todayAppointments.isEmpty
+            ? _buildEmptyState('No appointments scheduled for today')
+            : Card(
+                elevation: 2,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _todayAppointments.length,
+                  separatorBuilder: (context, index) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final appointment = _todayAppointments[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: AppColors.primary.withOpacity(0.1),
+                        child: Text(
+                          appointment['Patient'].toString().substring(0, 1),
+                          style: TextStyle(color: AppColors.primary),
+                        ),
+                      ),
+                      title: Text(appointment['Patient']),
+                      subtitle: Text('${appointment['Time']} - ${appointment['Purpose']}'),
+                      trailing: _buildStatusChip(appointment['Status']),
+                      onTap: () {
+                        // Navigate to appointment details
+                        Navigator.pushNamed(
+                          context, 
+                          '/doctor/appointments/view/${appointment['id']}',
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+        const SizedBox(height: 32),
+        
+        // Upcoming appointments
+        const Text(
+          'Upcoming Appointments',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _upcomingAppointments.isEmpty
+            ? _buildEmptyState('No upcoming appointments scheduled')
+            : Card(
+                elevation: 2,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _upcomingAppointments.length > 5 ? 5 : _upcomingAppointments.length,
+                  separatorBuilder: (context, index) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final appointment = _upcomingAppointments[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: AppColors.primary.withOpacity(0.1),
+                        child: Text(
+                          appointment['Patient'].toString().substring(0, 1),
+                          style: TextStyle(color: AppColors.primary),
+                        ),
+                      ),
+                      title: Text(appointment['Patient']),
+                      subtitle: Text('${appointment['Date']} at ${appointment['Time']}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildStatusChip(appointment['Status']),
+                          const SizedBox(width: 8),
+                          Icon(Icons.chevron_right, color: Colors.grey[400]),
+                        ],
+                      ),
+                      onTap: () {
+                        // Navigate to appointment details
+                        Navigator.pushNamed(
+                          context, 
+                          '/doctor/appointments/view/${appointment['id']}',
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+        if (_upcomingAppointments.length > 5) ...[
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton.icon(
+              icon: const Icon(Icons.calendar_today),
+              label: const Text('View All Appointments'),
+              onPressed: () => _switchTab('appointments'),
+            ),
+          ),
         ],
+      ],
+    );
+  }
+  
+  Widget _buildEmptyState(String message) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildStatusChip(String status) {
+    Color chipColor;
+    switch (status.toLowerCase()) {
+      case 'scheduled':
+        chipColor = Colors.blue;
+        break;
+      case 'confirmed':
+        chipColor = Colors.green;
+        break;
+      case 'cancelled':
+        chipColor = Colors.red;
+        break;
+      case 'completed':
+        chipColor = Colors.teal;
+        break;
+      default:
+        chipColor = Colors.grey;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: chipColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: chipColor),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          fontSize: 12,
+          color: chipColor,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
@@ -675,28 +890,35 @@ class _MedicDashboardState extends State<MedicDashboard> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatCard(
-                  title: 'My Patients',
-                  value: _patientCount.toString(),
                   icon: Icons.people,
+                  title: _patientCount.toString(),
+                  subtitle: 'My Patients',
                   color: Colors.blue,
+                  onTap: () => _switchTab('patients'),
                 ),
                 _buildStatCard(
-                  title: 'Today\'s Appointments',
-                  value: _todayAppointments.length.toString(),
                   icon: Icons.today,
+                  title: _todayAppointments.length.toString(),
+                  subtitle: 'Today\'s Appointments',
                   color: Colors.orange,
+                  onTap: () => _switchTab('appointments'),
                 ),
                 _buildStatCard(
-                  title: 'Upcoming Appointments',
-                  value: _upcomingAppointments.length.toString(),
                   icon: Icons.calendar_month,
+                  title: _upcomingAppointments.length.toString(),
+                  subtitle: 'Upcoming Appointments',
                   color: Colors.green,
+                  onTap: () => _switchTab('appointments'),
                 ),
                 _buildStatCard(
-                  title: 'Completed Today',
-                  value: _todayAppointments.where((a) => a['Status'] == 'completed').length.toString(),
                   icon: Icons.check_circle,
+                  title: _todayAppointments
+                    .where((a) => a['Status']?.toString().toLowerCase() == 'completed')
+                    .length
+                    .toString(),
+                  subtitle: 'Completed Today',
                   color: Colors.purple,
+                  onTap: () => _switchTab('appointments'),
                 ),
               ],
             ),
@@ -707,44 +929,42 @@ class _MedicDashboardState extends State<MedicDashboard> {
   }
   
   Widget _buildStatCard({
-    required String title,
-    required String value,
     required IconData icon,
+    required String title,
+    required String subtitle,
     required Color color,
+    required VoidCallback onTap,
   }) {
-    return Expanded(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Card(
-        elevation: 0,
-        color: color.withOpacity(0.1),
+        elevation: 2,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  Icon(icon, color: color, size: 28),
+                  const Spacer(),
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: color,
                     ),
-                  ),
-                  Icon(
-                    icon,
-                    color: color,
-                    size: 20,
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               Text(
-                value,
+                subtitle,
                 style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+                  fontSize: 14,
+                  color: Colors.grey[600],
                 ),
               ),
             ],
@@ -1144,5 +1364,54 @@ class _MedicDashboardState extends State<MedicDashboard> {
         ),
       );
     }
+  }
+  
+  // Add missing tab building methods
+  Widget _buildConsultationsContent() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            'Consultations feature coming soon',
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildClinicalRecordsContent() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            'Clinical Records feature coming soon',
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildSettingsContent() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.settings, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            'Settings feature coming soon',
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
   }
 }

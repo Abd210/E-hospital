@@ -29,22 +29,22 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
   // Form controllers
   final _dateController = TextEditingController();
   final _timeController = TextEditingController();
-  String _selectedType = 'ROUTINE';
-  String _selectedStatus = 'SCHEDULED';
-  String? _selectedDoctorId;
-  String? _selectedPatientId;
   final _notesController = TextEditingController();
   
+  String? _selectedDoctorId;
+  String? _selectedPatientId;
+  DateTime _selectedDate = DateTime.now();
+  String _selectedType = 'checkup';
+  String _selectedStatus = 'SCHEDULED';
+  
   // Data
-  late DateTime _selectedDate;
-  Appointment? _appointmentData;
+  late Appointment? _appointmentData;
   List<Map<String, dynamic>> _doctorsList = [];
   List<Map<String, dynamic>> _patientsList = [];
   
   @override
   void initState() {
     super.initState();
-    _selectedDate = DateTime.now();
     _loadInitialData();
   }
   
@@ -114,10 +114,10 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
           _selectedDoctorId = appointment.doctorId;
           _selectedPatientId = appointment.patientId;
           _selectedDate = appointment.appointmentDate;
-          _dateController.text = DateFormat('yyyy-MM-dd').format(_selectedDate);
-          _timeController.text = appointment.time;
           _selectedType = appointment.type.toString().split('.').last;
-          _selectedStatus = appointment.status.toString().split('.').last;
+          _selectedStatus = appointment.status.toString().split('.').last.toUpperCase();
+          _dateController.text = DateFormat('yyyy-MM-dd').format(appointment.appointmentDate);
+          _timeController.text = appointment.time;
           _notesController.text = appointment.notes ?? '';
         });
       }
@@ -182,6 +182,64 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
     });
     
     try {
+      // Check if the doctor is available at the selected date and time
+      final isDoctorAvailable = await FirestoreService.isDoctorAvailable(
+        _selectedDoctorId!,
+        _selectedDate,
+        _timeController.text,
+      );
+      
+      if (!isDoctorAvailable) {
+        // Show error message with detailed information about doctor availability
+        if (mounted) {
+          setState(() => _isLoading = false);
+          
+          // Get the doctor's name for better error messaging
+          String doctorName = '';
+          for (var doctor in _doctorsList) {
+            if (doctor['id'] == _selectedDoctorId) {
+              doctorName = doctor['name'];
+              break;
+            }
+          }
+          
+          // Get all existing appointment times for this doctor on the selected date
+          final bookedTimes = await FirestoreService.getDoctorAppointmentTimes(
+            _selectedDoctorId!,
+            _selectedDate,
+          );
+          
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Schedule Conflict'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Dr. $doctorName is not available at this time.'),
+                  const SizedBox(height: 8),
+                  if (bookedTimes.isNotEmpty) ...[
+                    const Text('Already booked times on this date:'),
+                    const SizedBox(height: 4),
+                    ...bookedTimes.map((time) => Text('• $time')),
+                  ],
+                  const SizedBox(height: 8),
+                  const Text('Please select another date or time.'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+      }
+      
       // Get names for doctor and patient
       String doctorName = '';
       String patientName = '';
@@ -208,7 +266,7 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
         'patientName': patientName,
         'appointmentDate': _selectedDate,
         'time': _timeController.text,
-        'type': _selectedType.toLowerCase(),
+        'type': _selectedType,
         'status': _selectedStatus.toLowerCase(),
         'notes': _notesController.text,
         'purpose': 'General appointment',
@@ -227,7 +285,7 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
           'appointmentDate': _selectedDate.toIso8601String(),
           'time': _timeController.text,
           'purpose': 'General appointment',
-          'type': _selectedType.toLowerCase(),
+          'type': _selectedType,
           'status': _selectedStatus.toLowerCase(),
           'notes': _notesController.text
         }));
@@ -249,7 +307,7 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
           time: _timeController.text,
           purpose: 'General appointment',
           type: AppointmentType.values.firstWhere(
-            (e) => e.toString().split('.').last.toLowerCase() == _selectedType.toLowerCase(),
+            (e) => e.toString().split('.').last == _selectedType,
             orElse: () => AppointmentType.checkup,
           ),
           status: AppointmentStatus.values.firstWhere(
@@ -630,10 +688,15 @@ class _AppointmentManagementState extends State<AppointmentManagement> {
                             child: _buildDropdownField(
                               label: 'Appointment Type',
                               value: _selectedType,
-                              items: ['ROUTINE', 'FOLLOW_UP', 'URGENT', 'CONSULTATION'].map((type) {
+                              items: ['checkup', 'followUp', 'consultation', 'emergency', 'procedure', 'surgery', 'vaccination', 'test', 'therapy'].map((type) {
+                                // Display format for UI
+                                String displayText = type;
+                                if (type == 'followUp') displayText = 'Follow Up';
+                                else displayText = type.substring(0, 1).toUpperCase() + type.substring(1);
+                                
                                 return DropdownMenuItem(
                                   value: type,
-                                  child: Text(type.replaceAll('_', ' ')),
+                                  child: Text(displayText),
                                 );
                               }).toList(),
                               onChanged: (value) {

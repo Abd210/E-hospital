@@ -88,12 +88,12 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
             return {
               'id': patient.id,
               'name': patient.name,
-              'age': patient.age,
-              'gender': patient.gender,
+              'age': patient.age ?? 0,
+              'gender': patient.gender ?? 'Unknown',
               'email': patient.email,
               'phone': patient.phone ?? 'N/A',
-              'medicalCondition': patient.medicalCondition,
-              'allergies': patient.allergies,
+              'medicalCondition': patient.medicalCondition ?? 'Healthy',
+              'allergies': patient.allergies ?? 'None',
               'bloodGroup': patient.profile?['bloodGroup'] ?? 'Unknown',
             };
           }).toList();

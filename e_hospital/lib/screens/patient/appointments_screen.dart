@@ -528,6 +528,56 @@ class _AppointmentDialogState extends State<_AppointmentDialog> {
     });
     
     try {
+      // Check if the doctor is available at the selected date and time
+      final isDoctorAvailable = await FirestoreService.isDoctorAvailable(
+        _selectedDoctor!.id,
+        _selectedDate,
+        _timeController.text,
+      );
+      
+      if (!isDoctorAvailable) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          
+          // Get all existing appointment times for this doctor on the selected date
+          final bookedTimes = await FirestoreService.getDoctorAppointmentTimes(
+            _selectedDoctor!.id,
+            _selectedDate,
+          );
+          
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Schedule Conflict'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Dr. ${_selectedDoctor!.name} is not available at this time.'),
+                  const SizedBox(height: 8),
+                  if (bookedTimes.isNotEmpty) ...[
+                    const Text('Already booked times on this date:'),
+                    const SizedBox(height: 4),
+                    ...bookedTimes.map((time) => Text('• $time')).take(5),
+                    if (bookedTimes.length > 5) 
+                      Text('... and ${bookedTimes.length - 5} more'),
+                  ],
+                  const SizedBox(height: 8),
+                  const Text('Please select another date or time.'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+      }
+      
       // Create appointment
       final appointment = Appointment(
         id: '',
@@ -620,9 +670,11 @@ class _AppointmentDialogState extends State<_AppointmentDialog> {
                 ),
                 value: _appointmentType,
                 items: AppointmentType.values.map((type) {
+                  // Create a more user-friendly display name
+                  final String displayName = _getAppointmentTypeDisplayName(type);
                   return DropdownMenuItem<AppointmentType>(
                     value: type,
-                    child: Text(type.toString().split('.').last),
+                    child: Text(displayName),
                   );
                 }).toList(),
                 onChanged: (value) {
@@ -631,6 +683,12 @@ class _AppointmentDialogState extends State<_AppointmentDialog> {
                       _appointmentType = value;
                     });
                   }
+                },
+                validator: (value) {
+                  if (value == null) {
+                    return 'Please select an appointment type';
+                  }
+                  return null;
                 },
               ),
               
@@ -723,5 +781,30 @@ class _AppointmentDialogState extends State<_AppointmentDialog> {
               ),
       ],
     );
+  }
+
+  String _getAppointmentTypeDisplayName(AppointmentType type) {
+    switch (type) {
+      case AppointmentType.checkup:
+        return 'Checkup';
+      case AppointmentType.followUp:
+        return 'Follow-Up';
+      case AppointmentType.consultation:
+        return 'Consultation';
+      case AppointmentType.emergency:
+        return 'Emergency';
+      case AppointmentType.procedure:
+        return 'Procedure';
+      case AppointmentType.surgery:
+        return 'Surgery';
+      case AppointmentType.vaccination:
+        return 'Vaccination';
+      case AppointmentType.test:
+        return 'Test';
+      case AppointmentType.therapy:
+        return 'Therapy';
+      default:
+        return type.toString().split('.').last;
+    }
   }
 } 
