@@ -4,8 +4,6 @@ import 'package:e_hospital/screens/admin/doctor_management.dart';
 import 'package:e_hospital/screens/admin/patient_management.dart';
 import 'package:e_hospital/screens/admin/appointment_management.dart';
 import 'package:e_hospital/screens/medic_dashboard.dart';
-import 'package:e_hospital/screens/medic/medical_record_management.dart';
-import 'package:e_hospital/screens/medic/medical_records_screen.dart';
 import 'package:e_hospital/screens/medic/doctor_profile.dart';
 import 'package:e_hospital/screens/medic/my_patients_screen.dart';
 import 'package:e_hospital/screens/login.dart';
@@ -17,6 +15,7 @@ import 'package:e_hospital/screens/doctor/doctor_appointment_form.dart';
 import 'package:e_hospital/screens/doctor/doctor_patient_detail_screen.dart';
 import 'package:e_hospital/screens/doctor/simple_patient_records.dart';
 import 'package:e_hospital/clinical_file/patient_clinical_screen.dart';
+import 'package:e_hospital/clinical_file/doctor_clinical_screen.dart';
 
 class AppRoutes {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -55,7 +54,7 @@ class AppRoutes {
     if (path.startsWith('/doctor/patient-records/')) {
       final patientId = path.split('/').last;
       final patientName = args['patientName'] as String? ?? 'Patient';
-      return MaterialPageRoute(builder: (_) => SimplePatientRecordsScreen(
+      return MaterialPageRoute(builder: (_) => DoctorClinicalScreen(
         patientId: patientId,
         patientName: patientName,
       ));
@@ -115,36 +114,14 @@ class AppRoutes {
       final segments = path.split('/');
       if (segments.length > 3 && segments[3].isNotEmpty) {
         final patientId = segments[3];
-        // Patient detail page - show medical records for that patient
+        // Patient detail page - show clinical screen for that patient
         return MaterialPageRoute(
-          builder: (_) => MedicalRecordsScreen(patientId: patientId),
+          builder: (_) => DoctorClinicalScreen(
+            patientId: patientId,
+            patientName: 'Patient', // We'll get the actual name in the screen
+          ),
         );
       }
-    } else if (path.startsWith('/medic/records/') && !path.startsWith('/medic/records/view/') && !path.startsWith('/medic/records/edit/')) {
-      // Handle '/medic/records/{patientId}' path
-      final segments = path.split('/');
-      if (segments.length > 3 && segments[3].isNotEmpty) {
-        final patientId = segments[3];
-        return MaterialPageRoute(
-          builder: (_) => MedicalRecordsScreen(patientId: patientId),
-        );
-      }
-    } else if (path.startsWith('/medic/records/view/')) {
-      final recordId = path.split('/').last;
-      return MaterialPageRoute(
-        builder: (_) => MedicalRecordManagement(
-          recordId: recordId,
-          action: 'view',
-        ),
-      );
-    } else if (path.startsWith('/medic/records/edit/')) {
-      final recordId = path.split('/').last;
-      return MaterialPageRoute(
-        builder: (_) => MedicalRecordManagement(
-          recordId: recordId,
-          action: 'edit',
-        ),
-      );
     }
     
     // Standard routes
@@ -194,15 +171,6 @@ class AppRoutes {
       case '/medic/appointments':
         // Use the MedicDashboard with initialTab set to appointments
         return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'appointments'));
-      
-      case '/medic/records':
-        // Use MedicalRecordsScreen directly
-        return MaterialPageRoute(builder: (_) => const MedicalRecordsScreen());
-        
-      case '/medic/records/add':
-        return MaterialPageRoute(
-          builder: (_) => const MedicalRecordManagement(action: 'add'),
-        );
       
       case '/medic/profile':
         return MaterialPageRoute(builder: (_) => const DoctorProfileScreen());

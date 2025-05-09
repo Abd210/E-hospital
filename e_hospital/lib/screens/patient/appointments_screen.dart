@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:e_hospital/core/widgets/responsive_layout.dart';
+import 'package:e_hospital/core/widgets/app_sidebar.dart';
 import 'package:e_hospital/services/firestore_service.dart';
 import 'package:e_hospital/models/appointment_model.dart';
 import 'package:e_hospital/models/user_model.dart';
@@ -313,6 +314,25 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> w
 
   @override
   Widget build(BuildContext context) {
+    return ResponsiveLayout(
+      mobile: _buildContent(isMobile: true),
+      tablet: _buildContent(isMobile: false),
+      desktop: Row(
+        children: [
+          AppSidebar(
+            currentPath: '/patient/appointments',
+            userRole: 'patient',
+            userName: _patientName,
+          ),
+          Expanded(
+            child: _buildContent(isMobile: false),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildContent({required bool isMobile}) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Appointments'),
@@ -324,6 +344,13 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> w
           ],
         ),
       ),
+      drawer: isMobile ? Drawer(
+        child: AppSidebar(
+          currentPath: '/patient/appointments',
+          userRole: 'patient',
+          userName: _patientName,
+        ),
+      ) : null,
       floatingActionButton: FloatingActionButton(
         onPressed: _bookAppointment,
         child: const Icon(Icons.add),

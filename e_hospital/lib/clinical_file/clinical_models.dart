@@ -125,6 +125,17 @@ class Prescription {
   }
   
   factory Prescription.fromJson(Map<String, dynamic> json) {
+    // Handle duration field - could be int, string, or null
+    int? parsedDuration;
+    if (json['duration'] != null) {
+      if (json['duration'] is int) {
+        parsedDuration = json['duration'] as int;
+      } else if (json['duration'] is String) {
+        // Try to parse the string to an integer
+        parsedDuration = int.tryParse(json['duration'] as String);
+      }
+    }
+    
     return Prescription(
       id: json['id'] as String,
       patientId: json['patientId'] as String,
@@ -137,7 +148,7 @@ class Prescription {
       date: json['date'] is Timestamp 
           ? (json['date'] as Timestamp).toDate()
           : DateTime.parse(json['date'] as String),
-      duration: json['duration'] as int?,
+      duration: parsedDuration,
       instructions: json['instructions'] as String?,
     );
   }

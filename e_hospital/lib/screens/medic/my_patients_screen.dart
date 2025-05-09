@@ -279,9 +279,10 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
       desktop: Row(
         children: [
           AppSidebar(
-            currentPath: '/medic/patients',
+            currentPath: '/medic/my-patients',
             userRole: 'medicalPersonnel',
             userName: _doctorName,
+            userEmail: _doctorEmail,
           ),
           Expanded(
             child: _buildContent(isMobile: false),
@@ -308,6 +309,14 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
           ),
         ],
       ),
+      drawer: isMobile ? Drawer(
+        child: AppSidebar(
+          currentPath: '/medic/my-patients',
+          userRole: 'medicalPersonnel',
+          userName: _doctorName,
+          userEmail: _doctorEmail,
+        ),
+      ) : null,
       floatingActionButton: FloatingActionButton(
         onPressed: _addNewPatient,
         backgroundColor: AppColors.primary,

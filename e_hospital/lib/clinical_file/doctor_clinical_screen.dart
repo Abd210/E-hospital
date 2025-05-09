@@ -7,6 +7,7 @@ import 'package:e_hospital/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:uuid/uuid.dart';
+import 'package:e_hospital/services/firestore_service.dart';
 
 class DoctorClinicalScreen extends StatefulWidget {
   final String patientId;
@@ -42,6 +43,13 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
     _tabController = TabController(length: 3, vsync: this);
     _getCurrentDoctor();
     _loadPatientData();
+    
+    // Add listener to tab controller to ensure doctor name is refreshed when tabs change
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        _getCurrentDoctor();
+      }
+    });
   }
   
   @override
@@ -51,12 +59,32 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   }
   
   Future<void> _getCurrentDoctor() async {
-    final user = auth.FirebaseAuth.instance.currentUser;
-    if (user != null) {
+    final authUser = auth.FirebaseAuth.instance.currentUser;
+    if (authUser != null) {
       setState(() {
-        _doctorId = user.uid;
-        _doctorName = user.displayName ?? 'Dr. Unknown';
+        _doctorId = authUser.uid;
       });
+      
+      // Get the doctor details from Firestore
+      try {
+        final doctorDetails = await FirestoreService.getUserById(authUser.uid);
+        if (doctorDetails != null && mounted) {
+          setState(() {
+            _doctorName = doctorDetails.name;
+          });
+        } else if (mounted) {
+          setState(() {
+            _doctorName = authUser.displayName ?? 'Dr. Unknown';
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading doctor details: $e');
+        if (mounted) {
+          setState(() {
+            _doctorName = authUser.displayName ?? 'Dr. Unknown';
+          });
+        }
+      }
     }
   }
   
@@ -102,7 +130,7 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
           AppSidebar(
             currentPath: '/doctor',
             userRole: 'medicalPersonnel',
-            userName: _doctorName,
+            userName: _doctorName.isNotEmpty ? _doctorName : 'Doctor',
           ),
           Expanded(
             child: _buildMainContent(isMobile: false),
@@ -523,6 +551,9 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   }
   
   Future<void> _addDiagnosis() async {
+    // Ensure we have the latest doctor info
+    await _getCurrentDoctor();
+    
     final TextEditingController typeController = TextEditingController();
     final TextEditingController descriptionController = TextEditingController();
     final TextEditingController notesController = TextEditingController();
@@ -805,6 +836,9 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   }
   
   Future<void> _addPrescription() async {
+    // Ensure we have the latest doctor info
+    await _getCurrentDoctor();
+    
     final TextEditingController medicationController = TextEditingController();
     final TextEditingController dosageController = TextEditingController();
     final TextEditingController frequencyController = TextEditingController();
@@ -1153,6 +1187,9 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   }
   
   Future<void> _addLaboratoryTest() async {
+    // Ensure we have the latest doctor info
+    await _getCurrentDoctor();
+    
     final TextEditingController testNameController = TextEditingController();
     final TextEditingController testTypeController = TextEditingController();
     final TextEditingController notesController = TextEditingController();

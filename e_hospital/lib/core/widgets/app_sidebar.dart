@@ -79,11 +79,6 @@ class _AppSidebarState extends State<AppSidebar> {
       path: '/medic/appointments',
     ),
     const NavItem(
-      title: 'Clinical Files',
-      icon: Icons.folder_outlined,
-      path: '/medic/records',
-    ),
-    const NavItem(
       title: 'Profile',
       icon: Icons.person_outline,
       path: '/medic/profile',
@@ -122,24 +117,27 @@ class _AppSidebarState extends State<AppSidebar> {
   
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      width: _isExpanded ? 260 : 80,
-      color: AppColors.surfaceDark,
-      child: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              children: [
-                for (final item in _navItems) _buildNavItem(item),
-              ],
+    return Material(
+      color: Colors.transparent,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: _isExpanded ? 260 : 80,
+        color: AppColors.surfaceDark,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                children: [
+                  for (final item in _navItems) _buildNavItem(item),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, color: AppColors.dark),
-          _buildFooter(),
-        ],
+            const Divider(height: 1, color: AppColors.dark),
+            _buildFooter(),
+          ],
+        ),
       ),
     );
   }

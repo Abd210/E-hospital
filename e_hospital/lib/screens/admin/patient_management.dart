@@ -1704,18 +1704,18 @@ class _PatientManagementState extends State<PatientManagement> with SingleTicker
                 
                 // Update the document with its ID
                 await docRef.update({'id': docRef.id});
-                
-                if (context.mounted) {
-                  // Hide loading indicator
-                  Navigator.pop(context);
                   
-                  Navigator.pop(context); // Close form dialog
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Diagnostic added successfully')),
-                  );
-                  
-                  // Reload patient data
-                  _loadPatientData();
+                  if (context.mounted) {
+                    // Hide loading indicator
+                    Navigator.pop(context);
+                    
+                      Navigator.pop(context); // Close form dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Diagnostic added successfully')),
+                      );
+                      
+                      // Reload patient data
+                      _loadPatientData();
                 }
               }
             },

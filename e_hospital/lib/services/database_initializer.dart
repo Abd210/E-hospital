@@ -99,8 +99,8 @@ class DatabaseInitializer {
 
     try {
       // Try to perform user deletion
-      try {
-        await _deleteAllUsers();
+    try {
+      await _deleteAllUsers();
       } catch (e) {
         debugPrint('Warning: Error during user deletion: $e');
         // Continue despite errors with user deletion
@@ -298,18 +298,18 @@ class DatabaseInitializer {
         
         // Create new account
         try {
-          final cred = await _auth.createUserWithEmailAndPassword(
+      final cred = await _auth.createUserWithEmailAndPassword(
             email: email,
             password: password,
-          );
-          await _db.collection('users').doc(cred.user!.uid).set({
-            'name' : _faker.person.name(),
-            'email': cred.user!.email,
-            'role' : 'hospitalAdmin',
-            'phone': _faker.phoneNumber.us(),
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          admins.add(cred.user!.uid);
+      );
+      await _db.collection('users').doc(cred.user!.uid).set({
+        'name' : _faker.person.name(),
+        'email': cred.user!.email,
+        'role' : 'hospitalAdmin',
+        'phone': _faker.phoneNumber.us(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      admins.add(cred.user!.uid);
         } catch (e) {
           debugPrint('Error creating admin user: $e');
         }
@@ -327,7 +327,7 @@ class DatabaseInitializer {
       try {
         final email = 'doctor$i@hospital.com';
         final password = 'Doctor#${1000 + i}';
-        final spec = specs[i % specs.length];
+      final spec = specs[i % specs.length];
         
         // Try direct sign in first (to reuse existing accounts)
         try {
@@ -358,20 +358,20 @@ class DatabaseInitializer {
         
         // Create new account
         try {
-          final cred = await _auth.createUserWithEmailAndPassword(
+      final cred = await _auth.createUserWithEmailAndPassword(
             email: email,
             password: password,
-          );
-          await _db.collection('users').doc(cred.user!.uid).set({
-            'name' : 'Dr. ${_faker.person.lastName()}',
-            'email': cred.user!.email,
+      );
+      await _db.collection('users').doc(cred.user!.uid).set({
+        'name' : 'Dr. ${_faker.person.lastName()}',
+        'email': cred.user!.email,
             'role' : 'medicalPersonnel',
-            'specialization': spec,
-            'experience' : '${5 + _rng.nextInt(25)}y',
-            'assignedPatientIds': <String>[],
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          doctors.add(cred.user!.uid);
+        'specialization': spec,
+        'experience' : '${5 + _rng.nextInt(25)}y',
+        'assignedPatientIds': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      doctors.add(cred.user!.uid);
         } catch (e) {
           debugPrint('Error creating doctor user: $e');
         }
@@ -385,7 +385,7 @@ class DatabaseInitializer {
       try {
         final email = 'patient$i@example.com';
         final password = 'Patient#${1000 + i}';
-        final sex = i.isEven ? 'Male' : 'Female';
+      final sex = i.isEven ? 'Male' : 'Female';
         
         // Try direct sign in first (to reuse existing accounts)
         try {
@@ -416,20 +416,20 @@ class DatabaseInitializer {
         
         // Create new account
         try {
-          final cred = await _auth.createUserWithEmailAndPassword(
+      final cred = await _auth.createUserWithEmailAndPassword(
             email: email,
             password: password,
-          );
-          await _db.collection('users').doc(cred.user!.uid).set({
-            'name' : _faker.person.name(),
-            'email': cred.user!.email,
-            'role' : 'patient',
-            'gender': sex,
-            'age'   : 15 + _rng.nextInt(80),
-            'bloodType': _bloodTypes[_rng.nextInt(_bloodTypes.length)],
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          patients.add(cred.user!.uid);
+      );
+      await _db.collection('users').doc(cred.user!.uid).set({
+        'name' : _faker.person.name(),
+        'email': cred.user!.email,
+        'role' : 'patient',
+        'gender': sex,
+        'age'   : 15 + _rng.nextInt(80),
+        'bloodType': _bloodTypes[_rng.nextInt(_bloodTypes.length)],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      patients.add(cred.user!.uid);
         } catch (e) {
           debugPrint('Error creating patient user: $e');
         }
@@ -494,8 +494,8 @@ class DatabaseInitializer {
   static Future<void> _createClinicalFiles(
       Map<String, List<String>> ids) async {
     try {
-      debugPrint('→ Creating clinical files for every patient…');
-      final pats = ids['patients']!;
+    debugPrint('→ Creating clinical files for every patient…');
+    final pats = ids['patients']!;
       final docs = ids['doctors']!;
       
       // Safety check - need at least one doctor and one patient
@@ -543,7 +543,7 @@ class DatabaseInitializer {
       }
       
       // Now create clinical files for each patient
-      for (final pid in pats) {
+    for (final pid in pats) {
         try {
           // Find which doctor this patient is assigned to
           String? docId;
@@ -576,15 +576,15 @@ class DatabaseInitializer {
           for (var i = 0; i < 2 + _rng.nextInt(4); i++) {
             diagnosesList.add({
               'id': uuid.v4(),
-              'patientId': pid,
+        'patientId': pid,
               'patientName': patientName,
               'doctorId': docId,
               'doctorName': docName,
               'type': ['Acute', 'Chronic', 'Preventive', 'Follow-up'][_rng.nextInt(4)],
-              'description': _faker.lorem.sentence(),
-              'date': DateTime.now()
-                  .subtract(Duration(days: _rng.nextInt(400)))
-                  .toIso8601String(),
+            'description': _faker.lorem.sentence(),
+            'date': DateTime.now()
+                .subtract(Duration(days: _rng.nextInt(400)))
+                .toIso8601String(),
               'notes': _rng.nextBool() ? _faker.lorem.sentence() : null,
             });
           }
@@ -596,7 +596,7 @@ class DatabaseInitializer {
               'id': uuid.v4(),
               'patientId': pid,
               'patientName': patientName,
-              'doctorId': docId,
+            'doctorId': docId,
               'doctorName': docName,
               'medicationName': _faker.food.dish(),
               'dosage': '${5 + _rng.nextInt(45)} mg',
@@ -657,12 +657,12 @@ class DatabaseInitializer {
               debugPrint('Warning: Error saving lab test: $e');
             }
           }
-    
-          // also update user doc
+
+      // also update user doc
           try {
-            await _db.collection('users').doc(pid).update({
-              'assignedDoctorId': docId,
-            });
+      await _db.collection('users').doc(pid).update({
+        'assignedDoctorId': docId,
+      });
           } catch (e) {
             debugPrint('Warning: Error updating patient $pid assigned doctor: $e');
           }
@@ -680,9 +680,9 @@ class DatabaseInitializer {
   static Future<void> _createAppointments(
       int count, Map<String, List<String>> ids) async {
     try {
-      debugPrint('→ Creating $count appointments…');
-      final docs = ids['doctors']!;
-      final pats = ids['patients']!;
+    debugPrint('→ Creating $count appointments…');
+    final docs = ids['doctors']!;
+    final pats = ids['patients']!;
       
       // Safety check - need at least one doctor and one patient
       if (docs.isEmpty || pats.isEmpty) {
@@ -691,7 +691,7 @@ class DatabaseInitializer {
         return;
       }
       
-      const status = ['scheduled','completed','cancelled'];
+    const status = ['scheduled','completed','cancelled'];
       const types = ['checkup', 'followUp', 'consultation'];
       
       // Create a mapping of doctorId -> patients assigned to that doctor
@@ -722,7 +722,7 @@ class DatabaseInitializer {
       count = min(count, pats.length * 5);
       
       const uuid = Uuid();
-      for (var i = 0; i < count; ++i) {
+    for (var i = 0; i < count; ++i) {
         try {
           // Determine doctor and patient (use assigned relationship when possible)
           String doctorId;
@@ -783,7 +783,7 @@ class DatabaseInitializer {
             'duration': _rng.nextBool() ? 15 + _rng.nextInt(4) * 15 : null, // 15, 30, 45, or 60 minutes
             'symptoms': _rng.nextBool() ? _faker.lorem.sentence() : null,
             'isVirtual': _rng.nextDouble() < 0.3, // 30% chance of virtual appointment
-            'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           });
         } catch (e) {

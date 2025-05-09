@@ -117,6 +117,13 @@ class _PatientClinicalScreenState extends State<PatientClinicalScreen> with Sing
           ],
         ),
       ),
+      drawer: isMobile ? Drawer(
+        child: AppSidebar(
+          currentPath: '/patient/records',
+          userRole: 'patient',
+          userName: _patientName,
+        ),
+      ) : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : TabBarView(

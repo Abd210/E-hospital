@@ -201,11 +201,9 @@ class _MedicDashboardState extends State<MedicDashboard> {
       case 'dashboard':
         return '/medic';
       case 'patients':
-        return '/medic/patients';
+        return '/medic/my-patients';
       case 'appointments':
         return '/medic/appointments';
-      case 'records':
-        return '/medic/records';
       case 'profile':
         return '/medic/profile';
       default:
@@ -221,8 +219,6 @@ class _MedicDashboardState extends State<MedicDashboard> {
         return 'My Patients';
       case 'appointments':
         return 'Appointments';
-      case 'records':
-        return 'Clinical Files';
       case 'profile':
         return 'My Profile';
       default:
