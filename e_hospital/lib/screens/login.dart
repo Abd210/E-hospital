@@ -243,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.blue.shade800, Colors.indigo.shade900],
+                colors: [Colors.blue.shade700, Colors.indigo.shade800],
               ),
             ),
           ),
@@ -257,43 +257,67 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Logo
-                  const Icon(
+                  Icon(
                     Icons.local_hospital,
-                    size: 80,
-                    color: Colors.white,
+                    size: 100,
+                    color: Colors.white.withOpacity(0.9),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   const Text(
                     'E-Hospital',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 32,
+                      fontSize: 36,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Healthcare Management System',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white.withOpacity(0.8),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
                   
                   // Login form
                   Card(
-                    elevation: 8,
+                    elevation: 12,
+                    shadowColor: Colors.black38,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(24.0),
+                      padding: const EdgeInsets.all(30.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            _isCreatingAccount ? 'Create Account' : 'Login',
-                            style: const TextStyle(
-                              fontSize: 24,
+                            _isCreatingAccount ? 'Create Account' : 'Welcome Back',
+                            style: TextStyle(
+                              fontSize: 28,
                               fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade800,
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 8),
+                          Text(
+                            _isCreatingAccount 
+                                ? 'Fill in your details to register' 
+                                : 'Sign in to continue',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 30),
                           
                           // Error message
                           if (_errorMessage != null) ...[
@@ -301,7 +325,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: Colors.red.shade50,
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: Colors.red.shade200),
                               ),
                               child: Text(
@@ -309,36 +333,52 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(color: Colors.red.shade800),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 20),
                           ],
                           
                           // Email field
                           TextField(
                             controller: _emailController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Email',
-                              prefixIcon: Icon(Icons.email_outlined),
-                              border: OutlineInputBorder(),
+                              hintText: 'Enter your email',
+                              prefixIcon: const Icon(Icons.email_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.blue.shade700, width: 2),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                             ),
                             keyboardType: TextInputType.emailAddress,
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 20),
                           
                           // Password field
                           TextField(
                             controller: _passwordController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Password',
-                              prefixIcon: Icon(Icons.lock_outline),
-                              border: OutlineInputBorder(),
+                              hintText: 'Enter your password',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.blue.shade700, width: 2),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                             ),
                             obscureText: true,
                             textInputAction: TextInputAction.done,
                             onSubmitted: (_) => _isCreatingAccount ? _createAccount() : _signIn(),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 30),
                           
                           // Login/Create button
                           ElevatedButton(
@@ -346,23 +386,32 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? null 
                                 : (_isCreatingAccount ? _createAccount : _signIn),
                             style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               backgroundColor: Colors.blue.shade700,
                               foregroundColor: Colors.white,
                               disabledBackgroundColor: Colors.blue.shade200,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                             child: _isLoading
                                 ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
+                                    height: 24,
+                                    width: 24,
                                     child: CircularProgressIndicator(
                                       color: Colors.white,
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : Text(_isCreatingAccount ? 'Create Account' : 'Login'),
+                                : Text(
+                                    _isCreatingAccount ? 'Create Account' : 'Sign In',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 20),
                           
                           // Toggle between login and create account
                           TextButton(
@@ -376,8 +425,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   },
                             child: Text(
                               _isCreatingAccount 
-                                  ? 'Already have an account? Login' 
-                                  : 'Create a new account',
+                                  ? 'Already have an account? Sign In' 
+                                  : 'Don\'t have an account? Create one',
+                              style: TextStyle(
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
@@ -386,43 +439,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   
                   const SizedBox(height: 32),
-                  
-                  // Database initialization button (NEW)
-                  ElevatedButton.icon(
-                    onPressed: _isInitializingDatabase ? null : _initializeDatabase,
-                    icon: const Icon(Icons.restart_alt, color: Colors.white),
-                    label: _isInitializingDatabase
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'Initialize Database & Create Sample Users',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade700,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Sample data button (deprecated, keep for compatibility)
-                  TextButton.icon(
-                    onPressed: _isLoading ? null : _createSampleUsers,
-                    icon: const Icon(Icons.people, color: Colors.white),
-                    label: const Text(
-                      'Create Sample Users (Legacy)',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
                   
                   // User credentials info
                   Card(

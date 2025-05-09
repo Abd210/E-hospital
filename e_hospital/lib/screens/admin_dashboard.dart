@@ -85,7 +85,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
           'Name': doctor.name,
           'Email': doctor.email,
           'Specialization': profile?['specialization'] ?? 'General',
-          'Patients': patientCount,
         };
       }).toList();
 
@@ -277,7 +276,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ),
         const SizedBox(height: 24),
         DataTableWidget(
-          columns: ['Name', 'Email', 'Specialization', 'Patients'],
+          columns: ['Name', 'Email', 'Specialization'],
           rows: _doctorsList,
           onRowTap: (row) {
             _showDoctorOptions(context, row);
@@ -666,7 +665,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ),
         const SizedBox(height: 16),
         DataTableWidget(
-          columns: ['Name', 'Email', 'Specialization', 'Patients'],
+          columns: ['Name', 'Email', 'Specialization'],
           rows: _doctorsList,
           onRowTap: (row) {
             _showDoctorOptions(context, row);

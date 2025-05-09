@@ -374,7 +374,7 @@ class DatabaseInitializer {
       doctors.add(cred.user!.uid);
         } catch (e) {
           debugPrint('Error creating doctor user: $e');
-        }
+    }
       } catch (e) {
         debugPrint('Error processing doctor user: $e');
       }
