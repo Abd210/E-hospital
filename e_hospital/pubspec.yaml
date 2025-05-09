@@ -51,7 +51,6 @@ dependencies:
   json_annotation: ^4.8.1
 
   # Routing
-  go_router: ^7.0.0
 
   # Firebase
   firebase_core: ^2.10.0
