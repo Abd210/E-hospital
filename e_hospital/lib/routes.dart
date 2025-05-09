@@ -42,6 +42,39 @@ class AppRoutes {
       return MaterialPageRoute(builder: (_) => const DoctorAppointmentForm());
     }
     
+    // Add route for doctor appointment view
+    if (path.startsWith('/doctor/appointments/view/')) {
+      final appointmentId = path.split('/').last;
+      return MaterialPageRoute(
+        builder: (_) => DoctorAppointmentForm(
+          appointmentId: appointmentId,
+          isViewMode: true,
+        ),
+      );
+    }
+    
+    // Add route for medic appointment view (alias of doctor appointment view)
+    if (path.startsWith('/medic/appointments/view/')) {
+      final appointmentId = path.split('/').last;
+      return MaterialPageRoute(
+        builder: (_) => DoctorAppointmentForm(
+          appointmentId: appointmentId,
+          isViewMode: true,
+        ),
+      );
+    }
+    
+    // Add route for medic appointment add
+    if (path == '/medic/appointments/add') {
+      return MaterialPageRoute(builder: (_) => const DoctorAppointmentForm());
+    }
+    
+    // Add route for medic records
+    if (path == '/medic/records') {
+      // Redirect to the clinical screen
+      return MaterialPageRoute(builder: (_) => const DoctorClinicalScreen());
+    }
+    
     // Add route for doctor patient details
     if (path.startsWith('/doctor/patients/')) {
       final patientId = path.split('/').last;
@@ -171,6 +204,10 @@ class AppRoutes {
       case '/medic/appointments':
         // Use the MedicDashboard with initialTab set to appointments
         return MaterialPageRoute(builder: (_) => const MedicDashboard(initialTab: 'appointments'));
+      
+      case '/medic/appointments/all':
+        // This route is for the "View All & Filter" button
+        return MaterialPageRoute(builder: (_) => const DoctorAppointmentListScreen());
       
       case '/medic/profile':
         return MaterialPageRoute(builder: (_) => const DoctorProfileScreen());

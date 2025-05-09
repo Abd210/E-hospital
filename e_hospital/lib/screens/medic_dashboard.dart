@@ -344,7 +344,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                         // Navigate to appointment details
                         Navigator.pushNamed(
                           context, 
-                          '/doctor/appointments/view/${appointment['id']}',
+                          '/medic/appointments/view/${appointment['id']}',
                         );
                       },
                     );
@@ -395,7 +395,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                         // Navigate to appointment details
                         Navigator.pushNamed(
                           context, 
-                          '/doctor/appointments/view/${appointment['id']}',
+                          '/medic/appointments/view/${appointment['id']}',
                         );
                       },
                     );
@@ -408,7 +408,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
             child: TextButton.icon(
               icon: const Icon(Icons.calendar_today),
               label: const Text('View All Appointments'),
-              onPressed: () => Navigator.pushNamed(context, '/doctor/appointments'),
+              onPressed: () => Navigator.pushNamed(context, '/medic/appointments'),
             ),
           ),
         ],
@@ -504,7 +504,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                       ElevatedButton.icon(
                         onPressed: () {
                           // Navigate to the appointment creation screen
-                          Navigator.pushNamed(context, '/doctor/appointments/add').then((_) {
+                          Navigator.pushNamed(context, '/medic/appointments/add').then((_) {
                             // Refresh appointments list after returning
                             _loadDashboardData();
                           });
@@ -516,7 +516,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                       OutlinedButton.icon(
                         onPressed: () {
                           // Navigate to appointments list screen with filter
-                          Navigator.pushNamed(context, '/doctor/appointments');
+                          Navigator.pushNamed(context, '/medic/appointments/all');
                         },
                         icon: const Icon(Icons.filter_list),
                         label: const Text('View All & Filter'),
@@ -993,7 +993,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                 ),
                 TextButton.icon(
                   onPressed: () {
-                    Navigator.pushNamed(context, '/doctor/appointments');
+                    Navigator.pushNamed(context, '/medic/appointments');
                   },
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('View All'),
@@ -1100,7 +1100,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                 ),
                 TextButton.icon(
                   onPressed: () {
-                    Navigator.pushNamed(context, '/doctor/appointments');
+                    Navigator.pushNamed(context, '/medic/appointments');
                   },
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('View All'),

@@ -10,13 +10,13 @@ import 'package:uuid/uuid.dart';
 import 'package:e_hospital/services/firestore_service.dart';
 
 class DoctorClinicalScreen extends StatefulWidget {
-  final String patientId;
-  final String patientName;
+  final String? patientId;
+  final String? patientName;
   
   const DoctorClinicalScreen({
     Key? key,
-    required this.patientId,
-    required this.patientName,
+    this.patientId,
+    this.patientName,
   }) : super(key: key);
 
   @override
@@ -37,12 +37,28 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   String _doctorId = '';
   String _doctorName = '';
   
+  // Patient info
+  String? _patientId;
+  String _patientName = '';
+  List<Map<String, dynamic>> _patientsList = [];
+  bool _isPatientSelected = false;
+  
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _getCurrentDoctor();
-    _loadPatientData();
+    
+    if (widget.patientId != null && widget.patientName != null) {
+      // If patient info is provided in the widget
+      _patientId = widget.patientId;
+      _patientName = widget.patientName!;
+      _isPatientSelected = true;
+      _loadPatientData();
+    } else {
+      // Otherwise, load the doctor's patients for selection
+      _loadDoctorPatients();
+    }
     
     // Add listener to tab controller to ensure doctor name is refreshed when tabs change
     _tabController.addListener(() {
@@ -89,15 +105,19 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   }
   
   Future<void> _loadPatientData() async {
+    if (_patientId == null) {
+      return;
+    }
+    
     setState(() {
       _isLoading = true;
     });
     
     try {
       // Load diagnoses, prescriptions, and laboratory tests in parallel
-      final diagnosesResult = await ClinicalService.getPatientDiagnoses(widget.patientId);
-      final prescriptionsResult = await ClinicalService.getPatientPrescriptions(widget.patientId);
-      final testsResult = await ClinicalService.getPatientLaboratoryTests(widget.patientId);
+      final diagnosesResult = await ClinicalService.getPatientDiagnoses(_patientId!);
+      final prescriptionsResult = await ClinicalService.getPatientPrescriptions(_patientId!);
+      final testsResult = await ClinicalService.getPatientLaboratoryTests(_patientId!);
       
       if (mounted) {
         setState(() {
@@ -118,6 +138,46 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
         });
       }
     }
+  }
+  
+  Future<void> _loadDoctorPatients() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final patients = await FirestoreService.getDoctorPatients(_doctorId);
+      
+      if (mounted) {
+        setState(() {
+          _patientsList = patients.map((patient) => {
+            'id': patient.id,
+            'name': patient.name,
+            'email': patient.email,
+          }).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading doctor patients: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading patients: $e')),
+        );
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  void _selectPatient(Map<String, dynamic> patient) {
+    setState(() {
+      _patientId = patient['id'];
+      _patientName = patient['name'];
+      _isPatientSelected = true;
+    });
+    _loadPatientData();
   }
   
   @override
@@ -141,9 +201,20 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
   }
   
   Widget _buildMainContent({required bool isMobile}) {
+    if (!_isPatientSelected) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Clinical Records'),
+        ),
+        body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildPatientSelectionScreen(),
+      );
+    }
+    
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.patientName}\'s Clinical File'),
+        title: Text('${_patientName}\'s Clinical File'),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -175,6 +246,92 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
                 _buildLaboratoryTestsTab(),
               ],
             ),
+    );
+  }
+  
+  Widget _buildPatientSelectionScreen() {
+    if (_patientsList.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 80,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'No patients assigned to you',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Please contact an administrator to assign patients to you',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Select a Patient',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Choose a patient to view or manage their clinical records',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _patientsList.length,
+              itemBuilder: (context, index) {
+                final patient = _patientsList[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade100,
+                      child: Text(
+                        patient['name'][0],
+                        style: TextStyle(
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(patient['name']),
+                    subtitle: Text(patient['email']),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _selectPatient(patient),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
   
@@ -550,123 +707,344 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
     );
   }
   
-  Future<void> _addDiagnosis() async {
-    // Ensure we have the latest doctor info
-    await _getCurrentDoctor();
+  void _addDiagnosis() {
+    if (_patientId == null) return;
     
-    final TextEditingController typeController = TextEditingController();
-    final TextEditingController descriptionController = TextEditingController();
-    final TextEditingController notesController = TextEditingController();
+    final typeController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final notesController = TextEditingController();
     
-    final result = await showDialog<Map<String, String>>(
+    showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Diagnosis'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: typeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Diagnosis Type',
-                    border: OutlineInputBorder(),
-                  ),
+      builder: (context) => AlertDialog(
+        title: const Text('Add Diagnosis'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: typeController,
+                decoration: const InputDecoration(
+                  labelText: 'Type',
+                  hintText: 'e.g., Hypertension',
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'Enter detailed description',
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: notesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (Optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (Optional)',
+                  hintText: 'Any additional notes',
                 ),
-              ],
-            ),
+                maxLines: 2,
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (typeController.text.isEmpty || descriptionController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Type and description are required')),
-                  );
-                  return;
-                }
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (typeController.text.isEmpty || descriptionController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please fill all required fields')),
+                );
+                return;
+              }
+              
+              final diagnosis = Diagnosis(
+                id: const Uuid().v4(),
+                patientId: _patientId!,
+                patientName: _patientName,
+                doctorId: _doctorId,
+                doctorName: _doctorName,
+                type: typeController.text,
+                description: descriptionController.text,
+                date: DateTime.now(),
+                notes: notesController.text.isNotEmpty ? notesController.text : null,
+              );
+              
+              Navigator.pop(context);
+              
+              // Show loading dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(child: CircularProgressIndicator()),
+              );
+              
+              try {
+                await ClinicalService.addDiagnosis(diagnosis);
                 
-                Navigator.pop(context, {
-                  'type': typeController.text,
-                  'description': descriptionController.text,
-                  'notes': notesController.text,
-                });
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Diagnosis added successfully')),
+                  );
+                  _loadPatientData(); // Refresh data
+                }
+              } catch (e) {
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
     );
+  }
+  
+  void _addPrescription() {
+    if (_patientId == null) return;
     
-    if (result == null) return;
+    final medicationController = TextEditingController();
+    final dosageController = TextEditingController();
+    final frequencyController = TextEditingController();
+    final durationController = TextEditingController();
+    final instructionsController = TextEditingController();
     
-    setState(() {
-      _isLoading = true;
-    });
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Prescription'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: medicationController,
+                decoration: const InputDecoration(
+                  labelText: 'Medication',
+                  hintText: 'e.g., Amoxicillin',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: dosageController,
+                decoration: const InputDecoration(
+                  labelText: 'Dosage',
+                  hintText: 'e.g., 500mg',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: frequencyController,
+                decoration: const InputDecoration(
+                  labelText: 'Frequency',
+                  hintText: 'e.g., Twice daily',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: durationController,
+                decoration: const InputDecoration(
+                  labelText: 'Duration (days)',
+                  hintText: 'e.g., 7',
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: instructionsController,
+                decoration: const InputDecoration(
+                  labelText: 'Instructions (Optional)',
+                  hintText: 'e.g., Take with food',
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (medicationController.text.isEmpty || 
+                  dosageController.text.isEmpty || 
+                  frequencyController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please fill all required fields')),
+                );
+                return;
+              }
+              
+              // Try to parse duration to int
+              int? duration;
+              if (durationController.text.isNotEmpty) {
+                duration = int.tryParse(durationController.text);
+              }
+              
+              final prescription = Prescription(
+                id: const Uuid().v4(),
+                patientId: _patientId!,
+                patientName: _patientName,
+                doctorId: _doctorId,
+                doctorName: _doctorName,
+                medicationName: medicationController.text,
+                dosage: dosageController.text,
+                frequency: frequencyController.text,
+                date: DateTime.now(),
+                duration: duration,
+                instructions: instructionsController.text.isNotEmpty ? instructionsController.text : null,
+              );
+              
+              Navigator.pop(context);
+              
+              // Show loading dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(child: CircularProgressIndicator()),
+              );
+              
+              try {
+                await ClinicalService.addPrescription(prescription);
+                
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Prescription added successfully')),
+                  );
+                  _loadPatientData(); // Refresh data
+                }
+              } catch (e) {
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _addLaboratoryTest() {
+    if (_patientId == null) return;
     
-    try {
-      final diagnosis = Diagnosis(
-        id: const Uuid().v4(),
-        patientId: widget.patientId,
-        patientName: widget.patientName,
-        doctorId: _doctorId,
-        doctorName: _doctorName,
-        type: result['type']!,
-        description: result['description']!,
-        date: DateTime.now(),
-        notes: result['notes']!.isNotEmpty ? result['notes'] : null,
-      );
-      
-      final success = await ClinicalService.addDiagnosis(diagnosis);
-      
-      if (success != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Diagnosis added successfully')),
-        );
-        _loadPatientData();
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to add diagnosis')),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error adding diagnosis: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+    final testNameController = TextEditingController();
+    final testTypeController = TextEditingController();
+    final notesController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Order Laboratory Test'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: testNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Test Name',
+                  hintText: 'e.g., Complete Blood Count',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: testTypeController,
+                decoration: const InputDecoration(
+                  labelText: 'Test Type',
+                  hintText: 'e.g., Blood Test',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (Optional)',
+                  hintText: 'Any specific instructions',
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (testNameController.text.isEmpty || testTypeController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please fill all required fields')),
+                );
+                return;
+              }
+              
+              final test = LaboratoryTest(
+                id: const Uuid().v4(),
+                patientId: _patientId!,
+                patientName: _patientName,
+                doctorId: _doctorId,
+                doctorName: _doctorName,
+                testName: testNameController.text,
+                testType: testTypeController.text,
+                date: DateTime.now(),
+                status: 'ordered',
+                notes: notesController.text.isNotEmpty ? notesController.text : null,
+              );
+              
+              Navigator.pop(context);
+              
+              // Show loading dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(child: CircularProgressIndicator()),
+              );
+              
+              try {
+                await ClinicalService.addLaboratoryTest(test);
+                
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Laboratory test ordered successfully')),
+                  );
+                  _loadPatientData(); // Refresh data
+                }
+              } catch (e) {
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Order Test'),
+          ),
+        ],
+      ),
+    );
   }
   
   Future<void> _editDiagnosis(Diagnosis diagnosis) async {
@@ -824,158 +1202,6 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
       }
     } catch (e) {
       debugPrint('Error deleting diagnosis: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-  
-  Future<void> _addPrescription() async {
-    // Ensure we have the latest doctor info
-    await _getCurrentDoctor();
-    
-    final TextEditingController medicationController = TextEditingController();
-    final TextEditingController dosageController = TextEditingController();
-    final TextEditingController frequencyController = TextEditingController();
-    final TextEditingController durationController = TextEditingController();
-    final TextEditingController instructionsController = TextEditingController();
-    
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Prescription'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: medicationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Medication Name',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: dosageController,
-                  decoration: const InputDecoration(
-                    labelText: 'Dosage',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., 500mg, 5ml, etc.',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: frequencyController,
-                  decoration: const InputDecoration(
-                    labelText: 'Frequency',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., Once daily, Twice daily, etc.',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: durationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Duration (days, optional)',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., 7, 14, 30',
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: instructionsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Instructions (Optional)',
-                    border: OutlineInputBorder(),
-                    hintText: 'Additional instructions for the patient',
-                  ),
-                  maxLines: 2,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (medicationController.text.isEmpty || 
-                    dosageController.text.isEmpty || 
-                    frequencyController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Medication, dosage, and frequency are required')),
-                  );
-                  return;
-                }
-                
-                Navigator.pop(context, {
-                  'medication': medicationController.text,
-                  'dosage': dosageController.text,
-                  'frequency': frequencyController.text,
-                  'duration': durationController.text,
-                  'instructions': instructionsController.text,
-                });
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
-    
-    if (result == null) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
-    
-    try {
-      int? duration;
-      if (result['duration'] != null && result['duration']!.isNotEmpty) {
-        duration = int.tryParse(result['duration']!);
-      }
-      
-      final prescription = Prescription(
-        id: const Uuid().v4(),
-        patientId: widget.patientId,
-        patientName: widget.patientName,
-        doctorId: _doctorId,
-        doctorName: _doctorName,
-        medicationName: result['medication']!,
-        dosage: result['dosage']!,
-        frequency: result['frequency']!,
-        date: DateTime.now(),
-        duration: duration,
-        instructions: result['instructions']!.isNotEmpty ? result['instructions'] : null,
-      );
-      
-      final success = await ClinicalService.addPrescription(prescription);
-      
-      if (success != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Prescription added successfully')),
-        );
-        _loadPatientData();
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to add prescription')),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error adding prescription: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
@@ -1175,128 +1401,6 @@ class _DoctorClinicalScreenState extends State<DoctorClinicalScreen> with Single
       }
     } catch (e) {
       debugPrint('Error deleting prescription: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-  
-  Future<void> _addLaboratoryTest() async {
-    // Ensure we have the latest doctor info
-    await _getCurrentDoctor();
-    
-    final TextEditingController testNameController = TextEditingController();
-    final TextEditingController testTypeController = TextEditingController();
-    final TextEditingController notesController = TextEditingController();
-    
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Order Laboratory Test'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: testNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Test Name',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., Blood glucose, Liver panel, etc.',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: testTypeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Test Type',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., Blood test, Imaging, Biopsy, etc.',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: notesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (Optional)',
-                    border: OutlineInputBorder(),
-                    hintText: 'Special instructions or patient preparation',
-                  ),
-                  maxLines: 2,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (testNameController.text.isEmpty || testTypeController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Test name and type are required')),
-                  );
-                  return;
-                }
-                
-                Navigator.pop(context, {
-                  'testName': testNameController.text,
-                  'testType': testTypeController.text,
-                  'notes': notesController.text,
-                });
-              },
-              child: const Text('Order Test'),
-            ),
-          ],
-        );
-      },
-    );
-    
-    if (result == null) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
-    
-    try {
-      final test = LaboratoryTest(
-        id: const Uuid().v4(),
-        patientId: widget.patientId,
-        patientName: widget.patientName,
-        doctorId: _doctorId,
-        doctorName: _doctorName,
-        testName: result['testName']!,
-        testType: result['testType']!,
-        date: DateTime.now(),
-        status: 'ordered',
-        notes: result['notes']!.isNotEmpty ? result['notes'] : null,
-      );
-      
-      final success = await ClinicalService.addLaboratoryTest(test);
-      
-      if (success != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Laboratory test ordered successfully')),
-        );
-        _loadPatientData();
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to order laboratory test')),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error ordering laboratory test: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),

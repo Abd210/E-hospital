@@ -8,7 +8,14 @@ import 'package:e_hospital/models/appointment_model.dart';
 import 'package:e_hospital/theme/app_theme.dart';
 
 class DoctorAppointmentForm extends StatefulWidget {
-  const DoctorAppointmentForm({Key? key}) : super(key: key);
+  final String? appointmentId;
+  final bool isViewMode;
+  
+  const DoctorAppointmentForm({
+    Key? key, 
+    this.appointmentId,
+    this.isViewMode = false,
+  }) : super(key: key);
 
   @override
   State<DoctorAppointmentForm> createState() => _DoctorAppointmentFormState();
@@ -37,12 +44,18 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
   // Appointment details
   AppointmentType _appointmentType = AppointmentType.checkup;
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
+  Appointment? _existingAppointment;
 
   @override
   void initState() {
     super.initState();
     _dateController.text = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    _loadData();
+    
+    if (widget.appointmentId != null) {
+      _loadExistingAppointment();
+    } else {
+      _loadData();
+    }
   }
 
   @override
@@ -52,6 +65,51 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
     _purposeController.dispose();
     _notesController.dispose();
     super.dispose();
+  }
+  
+  Future<void> _loadExistingAppointment() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final appointment = await FirestoreService.getAppointmentById(widget.appointmentId!);
+      if (appointment == null) {
+        throw Exception('Appointment not found');
+      }
+      
+      // Load patient details
+      final userPatient = await FirestoreService.getPatientById(appointment.patientId);
+      
+      setState(() {
+        _existingAppointment = appointment;
+        _doctorId = appointment.doctorId;
+        _doctorName = appointment.doctorName.replaceFirst('Dr. ', '');
+        _doctorSpecialty = appointment.doctorSpecialty ?? '';
+        
+        // Set form values
+        _selectedDate = appointment.appointmentDate;
+        _dateController.text = DateFormat('yyyy-MM-dd').format(_selectedDate);
+        _timeController.text = appointment.time;
+        _purposeController.text = appointment.purpose;
+        _notesController.text = appointment.notes ?? '';
+        _appointmentType = appointment.type;
+        
+        if (userPatient != null) {
+          final patient = Patient.fromUser(userPatient);
+          _selectedPatient = patient;
+          _patientsList = [patient];
+        }
+        
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error loading appointment: $e';
+        _isLoading = false;
+      });
+    }
   }
   
   Future<void> _loadData() async {
@@ -78,7 +136,7 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
         }
       }
       
-      // Get doctor's patients
+      // Get doctor's patients - this should return a List<Patient>
       final patients = await FirestoreService.getDoctorPatients(_doctorId);
       
       setState(() {
@@ -205,11 +263,45 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
     }
   }
 
+  Color _getStatusColor(AppointmentStatus status) {
+    switch (status) {
+      case AppointmentStatus.scheduled:
+        return Colors.blue;
+      case AppointmentStatus.confirmed:
+        return Colors.green;
+      case AppointmentStatus.completed:
+        return Colors.teal;
+      case AppointmentStatus.cancelled:
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+  
+  IconData _getStatusIcon(AppointmentStatus status) {
+    switch (status) {
+      case AppointmentStatus.scheduled:
+        return Icons.schedule;
+      case AppointmentStatus.confirmed:
+        return Icons.check_circle;
+      case AppointmentStatus.completed:
+        return Icons.done_all;
+      case AppointmentStatus.cancelled:
+        return Icons.cancel;
+      default:
+        return Icons.help;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Appointment'),
+        title: Text(widget.isViewMode 
+            ? 'Appointment Details' 
+            : widget.appointmentId != null 
+                ? 'Edit Appointment'
+                : 'Create Appointment'),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -256,39 +348,77 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
                             ),
                             const SizedBox(height: 24),
                             
-                            // Patient dropdown
-                            if (_patientsList.isEmpty) ...[
-                              const Text(
-                                'No patients assigned to you. Please contact an administrator.',
-                                style: TextStyle(color: Colors.red),
+                            // Patient selection dropdown
+                            DropdownButtonFormField<Patient>(
+                              decoration: const InputDecoration(
+                                labelText: 'Select Patient',
+                                border: OutlineInputBorder(),
                               ),
-                            ] else ...[
-                              DropdownButtonFormField<Patient>(
-                                decoration: const InputDecoration(
-                                  labelText: 'Select Patient',
-                                  border: OutlineInputBorder(),
-                                ),
-                                value: _selectedPatient,
-                                items: _patientsList.map((patient) {
-                                  return DropdownMenuItem<Patient>(
-                                    value: patient,
-                                    child: Text(patient.name),
-                                  );
-                                }).toList(),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _selectedPatient = value;
-                                  });
-                                },
-                                validator: (value) {
-                                  if (value == null) {
-                                    return 'Please select a patient';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ],
+                              value: _selectedPatient,
+                              items: _patientsList.map((patient) {
+                                return DropdownMenuItem<Patient>(
+                                  value: patient,
+                                  child: Text(patient.name),
+                                );
+                              }).toList(),
+                              onChanged: widget.isViewMode ? null : (value) {
+                                setState(() {
+                                  _selectedPatient = value;
+                                });
+                              },
+                              validator: (value) {
+                                if (value == null) {
+                                  return 'Please select a patient';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
                             
+                            // Appointment date
+                            TextFormField(
+                              controller: _dateController,
+                              readOnly: true,
+                              decoration: InputDecoration(
+                                labelText: 'Appointment Date',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: widget.isViewMode
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.calendar_today),
+                                        onPressed: () => _selectDate(context),
+                                      ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please select a date';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Appointment time
+                            TextFormField(
+                              controller: _timeController,
+                              readOnly: true,
+                              decoration: InputDecoration(
+                                labelText: 'Appointment Time',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: widget.isViewMode
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.access_time),
+                                        onPressed: () => _selectTime(context),
+                                      ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please select a time';
+                                }
+                                return null;
+                              },
+                            ),
                             const SizedBox(height: 16),
                             
                             // Appointment type
@@ -304,7 +434,7 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
                                   child: Text(type.toString().split('.').last),
                                 );
                               }).toList(),
-                              onChanged: (value) {
+                              onChanged: widget.isViewMode ? null : (value) {
                                 if (value != null) {
                                   setState(() {
                                     _appointmentType = value;
@@ -312,75 +442,74 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
                                 }
                               },
                             ),
-                            
                             const SizedBox(height: 16),
                             
-                            // Date
-                            TextFormField(
-                              controller: _dateController,
-                              decoration: const InputDecoration(
-                                labelText: 'Date',
-                                border: OutlineInputBorder(),
-                                suffixIcon: Icon(Icons.calendar_today),
-                              ),
-                              readOnly: true,
-                              onTap: () => _selectDate(context),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please select a date';
-                                }
-                                return null;
-                              },
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // Time
-                            TextFormField(
-                              controller: _timeController,
-                              decoration: const InputDecoration(
-                                labelText: 'Time',
-                                border: OutlineInputBorder(),
-                                suffixIcon: Icon(Icons.access_time),
-                              ),
-                              readOnly: true,
-                              onTap: () => _selectTime(context),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please select a time';
-                                }
-                                return null;
-                              },
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // Purpose
+                            // Appointment purpose
                             TextFormField(
                               controller: _purposeController,
+                              readOnly: widget.isViewMode,
                               decoration: const InputDecoration(
                                 labelText: 'Purpose',
                                 border: OutlineInputBorder(),
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter the purpose of this appointment';
+                                  return 'Please enter the purpose of the appointment';
                                 }
                                 return null;
                               },
                             ),
-                            
                             const SizedBox(height: 16),
                             
                             // Notes
                             TextFormField(
                               controller: _notesController,
+                              readOnly: widget.isViewMode,
                               decoration: const InputDecoration(
                                 labelText: 'Notes (Optional)',
                                 border: OutlineInputBorder(),
                               ),
                               maxLines: 3,
                             ),
+
+                            // Status section for existing appointments
+                            if (widget.appointmentId != null && _existingAppointment != null) ...[
+                              const SizedBox(height: 16),
+                              const Divider(),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Appointment Status',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _getStatusColor(_existingAppointment!.status).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: _getStatusColor(_existingAppointment!.status)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      _getStatusIcon(_existingAppointment!.status),
+                                      color: _getStatusColor(_existingAppointment!.status),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      _existingAppointment!.status.toString().split('.').last,
+                                      style: TextStyle(
+                                        color: _getStatusColor(_existingAppointment!.status),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -388,17 +517,37 @@ class _DoctorAppointmentFormState extends State<DoctorAppointmentForm> {
                     
                     const SizedBox(height: 24),
                     
-                    SizedBox(
-                      width: double.infinity,
-                      child: _isSaving
-                          ? const Center(child: CircularProgressIndicator())
-                          : ElevatedButton(
-                              onPressed: _patientsList.isEmpty ? null : _createAppointment,
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                              ),
-                              child: const Text('Create Appointment'),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        if (!widget.isViewMode)
+                          ElevatedButton(
+                            onPressed: _isSaving ? null : _createAppointment,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
                             ),
+                            child: _isSaving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(widget.appointmentId != null ? 'Update Appointment' : 'Create Appointment'),
+                          ),
+                        if (widget.isViewMode)
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close'),
+                          ),
+                      ],
                     ),
                   ],
                 ),
