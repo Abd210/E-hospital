@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_service.dart';
 import '../services/database_initializer.dart';
 import '../services/auth_service.dart';
+import 'package:flutter/foundation.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -27,8 +28,8 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     // Set default values for easier login during development
-    _emailController.text = 'admin@hospital.com';
-    _passwordController.text = 'admin123';
+    _emailController.text = 'admin0@hospital.com';
+    _passwordController.text = 'Admin#1000';
   }
 
   @override
@@ -198,13 +199,14 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await DatabaseInitializer.initializeDatabase();
+      // Use the huge dataset size for more data
+      await DatabaseInitializer.initializeDatabase(size: DatasetSize.huge, force: true);
       
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Database initialized successfully. You can now log in with the sample accounts.'),
+            content: Text('Database initialized with HUGE dataset successfully. You can now log in with the sample accounts.'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 5),
           ),
@@ -399,11 +401,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           )
                         : const Text(
-                            'Reset & Initialize Database',
+                            'Initialize Database & Create Sample Users',
                             style: TextStyle(color: Colors.white),
                           ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
+                      backgroundColor: Colors.green.shade700,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
@@ -432,16 +434,25 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Sample Users:',
+                            'Sample Users (Click to Auto-fill):',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 8),
-                          _buildCredentialRow('Admin', 'admin@hospital.com', 'admin123'),
-                          _buildCredentialRow('Doctor', 'doctor1@hospital.com', 'doctor123'),
-                          _buildCredentialRow('Patient', 'patient1@example.com', 'patient123'),
+                          _buildClickableCredentialRow('Admin', 'admin0@hospital.com', 'Admin#1000'),
+                          _buildClickableCredentialRow('Doctor', 'doctor0@hospital.com', 'Doctor#1000'),
+                          _buildClickableCredentialRow('Patient', 'patient0@example.com', 'Patient#1000'),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Note: Use the "Initialize HUGE Database" button above to create these users',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -485,6 +496,60 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildClickableCredentialRow(String role, String email, String password) {
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _emailController.text = email;
+          _passwordController.text = password;
+          _errorMessage = null;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+        margin: const EdgeInsets.symmetric(vertical: 4.0),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8.0),
+          border: Border.all(color: Colors.white.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: Text(
+                role,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 5,
+              child: Text(
+                email,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(
+                password,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            const Icon(
+              Icons.content_copy,
+              color: Colors.white,
+              size: 16,
+            ),
+          ],
+        ),
       ),
     );
   }

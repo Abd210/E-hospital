@@ -197,7 +197,10 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
   void _viewPatientRecords(Map<String, dynamic> patient) {
     Navigator.pushNamed(
       context,
-      '/medic/records/${patient['id']}',
+      '/doctor/patient-records/${patient['id']}',
+      arguments: {
+        'patientName': patient['name'],
+      },
     ).then((_) {
       // Refresh when returning
       final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
@@ -250,15 +253,15 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
                   }
                 }
               } catch (e) {
-                if (mounted) {
-                  // Close loading indicator
+                // Close loading indicator if still showing
+                if (Navigator.canPop(context)) {
                   Navigator.pop(context);
-                  
-                  // Show error message
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
                 }
+                
+                // Show error
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: $e')),
+                );
               }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -270,58 +273,25 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: ResponsiveLayout(
-        mobile: _buildMobileLayout(),
-        desktop: _buildDesktopLayout(),
+    return ResponsiveLayout(
+      mobile: _buildContent(isMobile: true),
+      tablet: _buildContent(isMobile: false),
+      desktop: Row(
+        children: [
+          AppSidebar(
+            currentPath: '/medic/patients',
+            userRole: 'medicalPersonnel',
+            userName: _doctorName,
+          ),
+          Expanded(
+            child: _buildContent(isMobile: false),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildDesktopLayout() {
-    return Row(
-      children: [
-        AppSidebar(
-          currentPath: '/medic/my-patients',
-          userRole: 'medicalPersonnel',
-          userName: _doctorName,
-          userEmail: _doctorEmail,
-        ),
-        Expanded(
-          child: Scaffold(
-            appBar: AppBar(
-              title: const Text('My Patients'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh',
-                  onPressed: () {
-                    final currentUserId = auth.FirebaseAuth.instance.currentUser?.uid;
-                    if (currentUserId != null) {
-                      _loadPatientData(currentUserId);
-                    }
-                  },
-                ),
-              ],
-            ),
-            floatingActionButton: FloatingActionButton(
-              onPressed: _addNewPatient,
-              child: const Icon(Icons.add),
-              tooltip: 'Add Patient',
-            ),
-            body: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: _buildContent(),
-                  ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout() {
+  Widget _buildContent({required bool isMobile}) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Patients'),
@@ -334,138 +304,120 @@ class _MyPatientsScreenState extends State<MyPatientsScreen> {
                 _loadPatientData(currentUserId);
               }
             },
+            tooltip: 'Refresh',
           ),
         ],
       ),
-      drawer: Drawer(
-        child: AppSidebar(
-          currentPath: '/medic/my-patients',
-          userRole: 'medicalPersonnel',
-          userName: _doctorName,
-          userEmail: _doctorEmail,
-        ),
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addNewPatient,
+        backgroundColor: AppColors.primary,
         child: const Icon(Icons.add),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16),
-              child: _buildContent(),
-            ),
+          : _patientsList.isEmpty
+              ? _buildEmptyState()
+              : _buildPatientList(),
     );
   }
 
-  Widget _buildContent() {
-    if (_patientsList.isEmpty) {
-      return const Center(
-        child: Text('You have no patients assigned. Please ask an admin to assign patients to you.'),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Patients Overview',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Total Patients: ${_patientsList.length}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_off,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No patients assigned to you yet',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: ListView.builder(
+          const SizedBox(height: 8),
+          Text(
+            'When patients are assigned to you,\nthey will appear here',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Request New Patient'),
+            onPressed: _addNewPatient,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPatientList() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'You have ${_patientsList.length} patient${_patientsList.length != 1 ? 's' : ''}',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
             itemCount: _patientsList.length,
             itemBuilder: (context, index) {
               final patient = _patientsList[index];
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CircleAvatar(
-                        radius: 30,
-                        backgroundColor: AppColors.secondary.withOpacity(0.2),
-                        child: const Icon(Icons.person, size: 30, color: AppColors.secondary),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.secondary,
+                    child: Text(
+                      (patient['name'] as String? ?? 'P')[0].toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              patient['name'] ?? 'Unknown Patient',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text('${patient['age']} years, ${patient['gender']}'),
-                            if (patient['medicalCondition'] != null && patient['medicalCondition'].isNotEmpty)
-                              Text('Condition: ${patient['medicalCondition']}'),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.visibility),
-                                  label: const Text('View Details'),
-                                  onPressed: () => _viewPatientDetails(patient),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                OutlinedButton.icon(
-                                  icon: const Icon(Icons.folder_open, color: Colors.orange),
-                                  label: const Text('Medical Records', style: TextStyle(color: Colors.orange)),
-                                  onPressed: () => _viewPatientRecords(patient),
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(color: Colors.orange),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _deletePatient(patient),
-                                  tooltip: 'Delete Patient',
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                    ),
+                  ),
+                  title: Text(patient['name'] ?? 'Unknown Patient'),
+                  subtitle: Text(
+                    '${patient['age'] ?? 'N/A'} years • ${patient['gender'] ?? 'N/A'} • ${patient['bloodGroup'] ?? 'Unknown'}'
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.folder_open),
+                        tooltip: 'View Medical Records',
+                        onPressed: () => _viewPatientRecords(patient),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.info_outline),
+                        tooltip: 'Patient Details',
+                        onPressed: () => _viewPatientDetails(patient),
                       ),
                     ],
                   ),
+                  onTap: () => _viewPatientDetails(patient),
                 ),
               );
             },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
-} 
+}

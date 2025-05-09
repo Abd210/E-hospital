@@ -7,6 +7,7 @@ import 'package:e_hospital/theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:e_hospital/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:e_hospital/clinical_file/patient_clinical_screen.dart';
 
 class PatientDashboard extends StatefulWidget {
   final String? initialTab;
@@ -345,7 +346,16 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
           iconColor: Colors.orange,
           backgroundColor: Colors.orange.withOpacity(0.1),
           subtitle: 'Patient records',
-          onTap: () => Navigator.pushNamed(context, '/patient/records'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const PatientClinicalScreen(),
+              ),
+            ).then((_) {
+              _loadPatientData(); // Refresh after returning
+            });
+          },
         ),
       ],
     );
@@ -468,24 +478,6 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
   }
 
   Widget _buildClinicalFilesTab() {
-    // Clinical files related data with only diagnostics and treatments
-    List<Map<String, dynamic>> clinicalFiles = [
-      {
-        'id': '1',
-        'Type': 'Diagnostic',
-        'Date': DateTime.now().subtract(const Duration(days: 3)),
-        'Doctor': 'Dr. Smith',
-        'Description': 'Initial diagnosis',
-      },
-      {
-        'id': '2',
-        'Type': 'Treatment',
-        'Date': DateTime.now().subtract(const Duration(days: 2)),
-        'Doctor': 'Dr. Johnson',
-        'Description': 'Follow-up treatment plan',
-      }
-    ];
-    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -498,31 +490,50 @@ class _PatientDashboardState extends State<PatientDashboard> with SingleTickerPr
                     fontWeight: FontWeight.bold,
                   ),
             ),
-            TextButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/patient/records'),
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('View All'),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Open Clinical File'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PatientClinicalScreen(),
+                  ),
+                ).then((_) {
+                  _loadPatientData(); // Refresh after returning
+                });
+              },
             ),
           ],
         ),
         const SizedBox(height: 16),
+        Text(
+          'Your clinical file contains your diagnoses, prescriptions, and lab test results.',
+          style: TextStyle(
+            color: Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 16),
         Expanded(
-          child: clinicalFiles.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No clinical file available.',
-                    style: TextStyle(color: AppColors.neutral),
+          child: Center(
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.medical_services),
+              label: const Text('View Your Complete Medical Record'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PatientClinicalScreen(),
                   ),
-                )
-              : DataTableWidget(
-                  columns: ['Type', 'Date', 'Doctor', 'Description'],
-                  rows: clinicalFiles,
-                  onRowTap: (row) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Selected clinical file entry: ${row['Type']} - ${row['Description']}'))
-                    );
-                  },
-                ),
+                ).then((_) {
+                  _loadPatientData(); // Refresh after returning
+                });
+              },
+            ),
+          ),
         ),
       ],
     );

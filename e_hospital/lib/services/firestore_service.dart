@@ -7,6 +7,7 @@ import 'package:e_hospital/models/clinical_model.dart';
 import 'package:e_hospital/models/appointment_model.dart';
 import 'package:e_hospital/models/doctor.dart';
 import 'package:e_hospital/models/patient.dart';
+import 'package:e_hospital/models/medical_record.dart';
 
 /// A comprehensive service that handles all Firestore operations
 class FirestoreService {
@@ -2140,6 +2141,127 @@ class FirestoreService {
     } catch (e) {
       debugPrint('Error getting doctor appointment times: $e');
       return [];
+    }
+  }
+  
+  /// Get all medical records for a patient
+  static Future<List<MedicalRecord>> getPatientMedicalRecords(String patientId) async {
+    try {
+      // Check if the patient has a clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) {
+        return [];
+      }
+      
+      // Combine diagnostics and medical notes as medical records
+      final List<MedicalRecord> records = [];
+      
+      // Add diagnostics as medical records
+      for (final diagnostic in clinicalFile.diagnostics) {
+        records.add(MedicalRecord(
+          id: diagnostic.id,
+          patientId: patientId,
+          doctorId: diagnostic.doctorId,
+          doctorName: diagnostic.doctorName,
+          date: diagnostic.date,
+          title: diagnostic.diagnosisType ?? 'Diagnosis',
+          description: diagnostic.description,
+          recordType: 'Diagnostic',
+          attachments: diagnostic.attachments ?? [],
+        ));
+      }
+      
+      // Add medical notes as medical records
+      for (final note in clinicalFile.medicalNotes) {
+        records.add(MedicalRecord(
+          id: note.id,
+          patientId: patientId,
+          doctorId: note.authorId,
+          doctorName: note.authorName,
+          date: note.date,
+          title: note.noteType ?? 'Note',
+          description: note.content,
+          recordType: 'Note',
+          attachments: note.attachments ?? [],
+        ));
+      }
+      
+      return records;
+    } catch (e) {
+      debugPrint('Error getting patient medical records: $e');
+      return [];
+    }
+  }
+  
+  /// Get all prescriptions for a patient
+  static Future<List<Prescription>> getPatientPrescriptions(String patientId) async {
+    try {
+      // Check if the patient has a clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) {
+        return [];
+      }
+      
+      return clinicalFile.prescriptions;
+    } catch (e) {
+      debugPrint('Error getting patient prescriptions: $e');
+      return [];
+    }
+  }
+  
+  /// Get all lab results for a patient
+  static Future<List<LabResult>> getPatientLabResults(String patientId) async {
+    try {
+      // Check if the patient has a clinical file
+      final clinicalFile = await getClinicalFileByPatientId(patientId);
+      if (clinicalFile == null) {
+        return [];
+      }
+      
+      return clinicalFile.labResults;
+    } catch (e) {
+      debugPrint('Error getting patient lab results: $e');
+      return [];
+    }
+  }
+  
+  /// Add a prescription directly to Firestore
+  static Future<bool> addDirectPrescription(Prescription prescription) async {
+    try {
+      // Generate ID if not provided
+      final id = prescription.id.isEmpty ? _uuid.v4() : prescription.id;
+      final prescriptionWithId = prescription.copyWith(id: id);
+      
+      // Save to prescriptions collection
+      await FirebaseFirestore.instance
+          .collection('prescriptions')
+          .doc(id)
+          .set(prescriptionWithId.toJson());
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error adding prescription: $e');
+      return false;
+    }
+  }
+  
+  /// Add a laboratory test directly to Firestore
+  static Future<bool> addLaboratoryTest(LabResult labTest) async {
+    try {
+      // Generate ID if not provided
+      final id = labTest.id.isEmpty ? _uuid.v4() : labTest.id;
+      final labTestWithId = labTest.copyWith(id: id);
+      
+      // Save to laboratoryTests collection
+      await FirebaseFirestore.instance
+          .collection('laboratoryTests')
+          .doc(id)
+          .set(labTestWithId.toJson());
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error adding laboratory test: $e');
+      return false;
     }
   }
 }

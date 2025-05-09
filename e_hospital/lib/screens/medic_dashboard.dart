@@ -713,18 +713,18 @@ class _MedicDashboardState extends State<MedicDashboard> {
                                       ElevatedButton.icon(
                                         icon: const Icon(Icons.visibility),
                                         label: const Text('View Details'),
-                                        onPressed: () => _viewPatientDetails(patient),
+                                        onPressed: () {
+                                          // Navigate to patient details screen
+                                          Navigator.pushNamed(
+                                            context,
+                                            '/doctor/patients/${patient['id']}',
+                                          ).then((_) {
+                                            // Refresh when returning
+                                            _loadDashboardData();
+                                          });
+                                        },
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: AppColors.primary,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      OutlinedButton.icon(
-                                        icon: const Icon(Icons.folder_open, color: Colors.orange),
-                                        label: const Text('Medical Records', style: TextStyle(color: Colors.orange)),
-                                        onPressed: () => _viewPatientRecords(patient),
-                                        style: OutlinedButton.styleFrom(
-                                          side: const BorderSide(color: Colors.orange),
                                         ),
                                       ),
                                       const SizedBox(width: 8),

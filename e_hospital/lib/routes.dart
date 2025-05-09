@@ -14,6 +14,9 @@ import 'package:e_hospital/screens/patient/appointments_screen.dart';
 import 'package:e_hospital/screens/patient/medical_records_screen.dart';
 import 'package:e_hospital/screens/doctor/doctor_appointment_list_screen.dart';
 import 'package:e_hospital/screens/doctor/doctor_appointment_form.dart';
+import 'package:e_hospital/screens/doctor/doctor_patient_detail_screen.dart';
+import 'package:e_hospital/screens/doctor/simple_patient_records.dart';
+import 'package:e_hospital/clinical_file/patient_clinical_screen.dart';
 
 class AppRoutes {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -38,6 +41,24 @@ class AppRoutes {
     // Add route for doctor appointment creation
     if (path == '/doctor/appointments/add') {
       return MaterialPageRoute(builder: (_) => const DoctorAppointmentForm());
+    }
+    
+    // Add route for doctor patient details
+    if (path.startsWith('/doctor/patients/')) {
+      final patientId = path.split('/').last;
+      return MaterialPageRoute(
+        builder: (_) => DoctorPatientDetailScreen(patientId: patientId),
+      );
+    }
+    
+    // Add route for simplified patient records
+    if (path.startsWith('/doctor/patient-records/')) {
+      final patientId = path.split('/').last;
+      final patientName = args['patientName'] as String? ?? 'Patient';
+      return MaterialPageRoute(builder: (_) => SimplePatientRecordsScreen(
+        patientId: patientId,
+        patientName: patientName,
+      ));
     }
     
     // Admin routes with IDs
@@ -198,7 +219,7 @@ class AppRoutes {
       
       case '/patient/records':
         // Clinical Files screen
-        return MaterialPageRoute(builder: (_) => const PatientMedicalRecordsScreen());
+        return MaterialPageRoute(builder: (_) => const PatientClinicalScreen());
       
       case '/patient/prescriptions':
         return MaterialPageRoute(builder: (_) => const PatientDashboard(initialTab: 'prescriptions'));
@@ -229,4 +250,4 @@ class AppRoutes {
       },
     );
   }
-} 
+}
