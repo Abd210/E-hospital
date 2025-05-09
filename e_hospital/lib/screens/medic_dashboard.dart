@@ -412,7 +412,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
             child: TextButton.icon(
               icon: const Icon(Icons.calendar_today),
               label: const Text('View All Appointments'),
-              onPressed: () => _switchTab('appointments'),
+              onPressed: () => Navigator.pushNamed(context, '/doctor/appointments'),
             ),
           ),
         ],
@@ -508,7 +508,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                       ElevatedButton.icon(
                         onPressed: () {
                           // Navigate to the appointment creation screen
-                          Navigator.pushNamed(context, '/admin/appointments/add').then((_) {
+                          Navigator.pushNamed(context, '/doctor/appointments/add').then((_) {
                             // Refresh appointments list after returning
                             _loadDashboardData();
                           });
@@ -518,9 +518,12 @@ class _MedicDashboardState extends State<MedicDashboard> {
                       ),
                       const SizedBox(width: 16),
                       OutlinedButton.icon(
-                        onPressed: () {},
+                        onPressed: () {
+                          // Navigate to appointments list screen with filter
+                          Navigator.pushNamed(context, '/doctor/appointments');
+                        },
                         icon: const Icon(Icons.filter_list),
-                        label: const Text('Filter'),
+                        label: const Text('View All & Filter'),
                       ),
                     ],
                   ),
@@ -994,7 +997,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                 ),
                 TextButton.icon(
                   onPressed: () {
-                    _switchTab('appointments');
+                    Navigator.pushNamed(context, '/doctor/appointments');
                   },
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('View All'),
@@ -1101,7 +1104,7 @@ class _MedicDashboardState extends State<MedicDashboard> {
                 ),
                 TextButton.icon(
                   onPressed: () {
-                    _switchTab('appointments');
+                    Navigator.pushNamed(context, '/doctor/appointments');
                   },
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('View All'),

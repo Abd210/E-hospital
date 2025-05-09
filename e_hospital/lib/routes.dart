@@ -12,6 +12,8 @@ import 'package:e_hospital/screens/login.dart';
 import 'package:e_hospital/screens/patient_dashboard.dart';
 import 'package:e_hospital/screens/patient/appointments_screen.dart';
 import 'package:e_hospital/screens/patient/medical_records_screen.dart';
+import 'package:e_hospital/screens/doctor/doctor_appointment_list_screen.dart';
+import 'package:e_hospital/screens/doctor/doctor_appointment_form.dart';
 
 class AppRoutes {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -26,6 +28,16 @@ class AppRoutes {
     // Add a new route for '/medic/my-patients'
     if (path == '/medic/my-patients') {
       return MaterialPageRoute(builder: (_) => const MyPatientsScreen());
+    }
+    
+    // Add route for doctor appointments
+    if (path == '/doctor/appointments') {
+      return MaterialPageRoute(builder: (_) => const DoctorAppointmentListScreen());
+    }
+    
+    // Add route for doctor appointment creation
+    if (path == '/doctor/appointments/add') {
+      return MaterialPageRoute(builder: (_) => const DoctorAppointmentForm());
     }
     
     // Admin routes with IDs
